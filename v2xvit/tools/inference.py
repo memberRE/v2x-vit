@@ -16,6 +16,7 @@ from v2xvit.utils import eval_utils
 
 DEBUG = True
 
+
 def test_parser():
     parser = argparse.ArgumentParser(description="synthetic data generation")
     parser.add_argument('--hypes_yaml', type=str, required=True,
@@ -43,18 +44,33 @@ def test_parser():
     return opt
 
 
+EF_dict = easydict.EasyDict(
+    {'hypes_yaml': '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_early_fusion.yaml',
+     'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/early_fusion_noise',
+     'fusion_method': 'early',
+     'save_npy': False,
+     'save_vis': False,
+     'show_vis': False,
+     'show_sequence': False,
+     'load_epoch': 39,
+     'stage': 'stage1'})
+
+MF_dict = easydict.EasyDict(
+    {'hypes_yaml': '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/stage3_baseline_compress0.yaml',
+     'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/point_pillar_v2xvit_2022_10_12_01_12_00',
+     'fusion_method': 'intermediate',
+     'save_npy': True,
+     'save_vis': False,
+     'show_vis': False,
+     'show_sequence': False,
+     'load_epoch': 16,
+     'stage': 'stage1'})
+
+
 def main():
     print(os.path.abspath('.'))
     if DEBUG:
-        opt = easydict.EasyDict({'hypes_yaml': '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_early_fusion_vit.yaml',
-                                 'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/point_pillar_early_fusion_mswin',
-                                 'fusion_method': 'early',
-                                 'save_npy': False,
-                                 'save_vis': False,
-                                 'show_vis': False,
-                                 'show_sequence': False,
-                                 'load_epoch': 48,
-                                 'stage': 'stage1'})
+        opt = EF_dict
     else:
         opt = test_parser()
     assert opt.fusion_method in ['late', 'early', 'intermediate']

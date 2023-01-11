@@ -69,8 +69,8 @@ def debuging(hypes):
 def main():
     print(os.path.abspath('.'))
     if DEBUG:
-        opt = easydict.EasyDict({'hypes_yaml': "/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_early_fusion_vit.yaml",
-                                 'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/point_pillar_early_fusion_mswin/',
+        opt = easydict.EasyDict({'hypes_yaml': "/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_early_fusion.yaml",
+                                 'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/early_fusion_noise/',
                                  'half': False,
                                  'stage': 'stage1'})
         # opt = easydict.EasyDict({   'hypes_yaml': "/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_v2xvit_stage3_NotUseRTE_learnable_motion_bs1.yaml",

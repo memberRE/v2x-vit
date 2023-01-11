@@ -2,14 +2,14 @@ name: point_pillar_v2xvit
 root_dir: '/home/JJ_Group/datasets/V2X/v2xset/train'
 validate_dir: '/home/JJ_Group/datasets/V2X/v2xset/validate'
 
-stage: 'stage3'
+stage: 'stage1'
 useRTE: &useRTE true
 use_motion: &use_motion false
 compression: &compression 0
-async: &async true
-loc_err: &loc_err true
+async: &async false
+loc_err: &loc_err false
 only_least_squares: &only_least_squares true
-learnable_backbone: &learnable_backbone true
+learnable_backbone: &learnable_backbone false
 build_motion_data: &build_motion_data false
 
 wild_setting:

@@ -8,6 +8,7 @@ import numpy as np
 import torch
 
 import v2xvit
+from v2xvit.models.pointnet_util import spare_point_cloud
 from v2xvit.utils import box_utils
 from v2xvit.data_utils.post_processor import build_postprocessor
 from v2xvit.data_utils.datasets import basedataset
@@ -17,6 +18,7 @@ from v2xvit.utils.pcd_utils import \
     mask_points_by_range, mask_ego_points, shuffle_points, \
     downsample_lidar_minimum
 
+DEBUG = True
 
 class EarlyFusionDataset(basedataset.BaseDataset):
     def __init__(self, params, visualize, train=True):
@@ -24,6 +26,15 @@ class EarlyFusionDataset(basedataset.BaseDataset):
         self.pre_processor = build_preprocessor(params['preprocess'],
                                                 train)
         self.post_processor = build_postprocessor(params['postprocess'], train)
+        self.spare = params.get('spare', False)
+        self.mask_first = params.get('mask_first', True)
+        self.sample_points = params.get('sample_points', 16384)
+
+        if DEBUG:
+            self.sample_points = 4000
+            self.spare = True
+            self.mask_first = True
+            print('DEBUG mode, sample points: {}, mask_first: {}'.format(self.sample_points, self.mask_first))
 
     def __getitem__(self, idx):
         base_data_dict = self.retrieve_base_data(idx, cur_ego_pose_flag=True)
@@ -67,8 +78,14 @@ class EarlyFusionDataset(basedataset.BaseDataset):
                 ego_lidar_pose)
             # all these lidar and object coordinates are projected to ego
             # already.
-            projected_lidar_stack.append(
-                selected_cav_processed['projected_lidar'])
+            lidar = selected_cav_processed['projected_lidar']
+            if self.spare and not self.train:
+                if self.mask_first:
+                    lidar = mask_points_by_range(lidar, self.params['preprocess']['cav_lidar_range'])
+                lidar = torch.from_numpy(lidar[None, ...])
+                lidar = spare_point_cloud(lidar, self.sample_points)
+                lidar = lidar[0, ...].numpy()
+            projected_lidar_stack.append(lidar)
             object_stack.append(selected_cav_processed['object_bbx_center'])
             object_id_stack += selected_cav_processed['object_ids']
             spatial_correction_matrix.append(
@@ -88,13 +105,14 @@ class EarlyFusionDataset(basedataset.BaseDataset):
         mask[:object_stack.shape[0]] = 1
 
         # convert list to numpy array, (N, 4)
-        projected_lidar_stack = np.vstack(projected_lidar_stack)
+        projected_lidar_stack = np.vstack(projected_lidar_stack)    # about 116875 points
 
         # data augmentation
         projected_lidar_stack, object_bbx_center, mask = \
             self.augment(projected_lidar_stack, object_bbx_center, mask)
 
         # we do lidar filtering in the stacked lidar
+        # about 86172 points
         projected_lidar_stack = mask_points_by_range(projected_lidar_stack,
                                                      self.params['preprocess'][
                                                          'cav_lidar_range'])
@@ -115,7 +133,7 @@ class EarlyFusionDataset(basedataset.BaseDataset):
         object_bbx_center[object_bbx_center_valid.shape[0]:] = 0
 
         # pre-process the lidar to voxel/bev/downsampled lidar
-        lidar_dict = self.pre_processor.preprocess(projected_lidar_stack)
+        lidar_dict = self.pre_processor.preprocess(projected_lidar_stack)   # about 3000 voxels
 
         # generate the anchor boxes
         anchor_box = self.post_processor.generate_anchor_box()

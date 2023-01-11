@@ -114,7 +114,7 @@ class PointPillarTransformer(nn.Module):
             spatial_features_2d = batch_dict['spatial_features_2d']
             # downsample feature to reduce memory
             if self.shrink_flag:
-                spatial_features_2d = self.shrink_conv(spatial_features_2d)
+                spatial_features_2d = self.shrink_conv(spatial_features_2d) # 3 384 96 352
             # compressor
             if self.compression:
                 spatial_features_2d = self.naive_compressor(spatial_features_2d)
