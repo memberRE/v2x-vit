@@ -7,6 +7,7 @@ import numpy as np
 import torch
 from cumm import tensorview as tv
 from spconv.utils import Point2VoxelCPU3d
+from spconv.pytorch.utils import PointToVoxel
 
 from v2xvit.data_utils.pre_processor.base_preprocessor import \
     BasePreprocessor
@@ -33,7 +34,7 @@ class SpVoxelPreprocessor(BasePreprocessor):
         self.grid_size = np.round(grid_size).astype(np.int64)
 
         # use sparse conv library to generate voxel
-        self.voxel_generator = Point2VoxelCPU3d(
+        self.voxel_generator = PointToVoxel(
             vsize_xyz=self.voxel_size,
             coors_range_xyz=self.lidar_range,
             max_num_points_per_voxel=self.max_points_per_voxel,
@@ -43,8 +44,8 @@ class SpVoxelPreprocessor(BasePreprocessor):
 
     def preprocess(self, pcd_np):
         data_dict = {}
-        pcd_tv = tv.from_numpy(pcd_np)
-        voxel_output = self.voxel_generator.point_to_voxel(pcd_tv)
+        pcd_tv = torch.from_numpy(pcd_np).float()
+        voxel_output = self.voxel_generator(pcd_tv)
         if isinstance(voxel_output, dict):
             voxels, coordinates, num_points = \
                 voxel_output['voxels'], voxel_output['coordinates'], \
