@@ -2,6 +2,7 @@
 Dataset class for early fusion
 """
 import math
+import warnings
 from collections import OrderedDict
 
 import numpy as np
@@ -21,20 +22,24 @@ from v2xvit.utils.pcd_utils import \
 DEBUG = True
 
 class EarlyFusionDataset(basedataset.BaseDataset):
-    def __init__(self, params, visualize, train=True):
+    def __init__(self, params, visualize, train=True, compress=None):
         super(EarlyFusionDataset, self).__init__(params, visualize, train)
         self.pre_processor = build_preprocessor(params['preprocess'],
                                                 train)
         self.post_processor = build_postprocessor(params['postprocess'], train)
         self.spare = params.get('spare', False)
         self.mask_first = params.get('mask_first', True)
-        self.sample_points = params.get('sample_points', 16384)
+        self.sample_points = params.get('sample_points', -1)
+        self.compress_model = compress
 
         if DEBUG:
-            self.sample_points = 4000
+            self.sample_points = -1
             self.spare = True
             self.mask_first = True
             print('DEBUG mode, sample points: {}, mask_first: {}'.format(self.sample_points, self.mask_first))
+
+    def set_compress_model(self, compress_model):
+        self.compress_model = compress_model
 
     def __getitem__(self, idx):
         base_data_dict = self.retrieve_base_data(idx, cur_ego_pose_flag=True)
@@ -79,12 +84,20 @@ class EarlyFusionDataset(basedataset.BaseDataset):
             # all these lidar and object coordinates are projected to ego
             # already.
             lidar = selected_cav_processed['projected_lidar']
-            if self.spare and not self.train:
-                if self.mask_first:
+            if self.spare and cav_id != ego_id:
+                if self.mask_first and not self.train:
                     lidar = mask_points_by_range(lidar, self.params['preprocess']['cav_lidar_range'])
-                lidar = torch.from_numpy(lidar[None, ...])
-                lidar = spare_point_cloud(lidar, self.sample_points)
-                lidar = lidar[0, ...].numpy()
+                # lidar = torch.from_numpy(lidar[None, ...])
+                if self.sample_points > 0:
+                    lidar = spare_point_cloud(torch.from_numpy(lidar[None, ...]), self.sample_points)
+                    lidar = lidar[0, ...].numpy()
+                if self.compress_model is not None:
+                    try:
+                        lidar = self.compress_model(lidar)
+                    except Exception as e:
+                        print(e)
+                        print('compress error, index: {}'.format(idx))
+                        raise e
             projected_lidar_stack.append(lidar)
             object_stack.append(selected_cav_processed['object_bbx_center'])
             object_id_stack += selected_cav_processed['object_ids']

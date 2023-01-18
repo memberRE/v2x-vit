@@ -12,8 +12,9 @@ from tensorboardX import SummaryWriter
 
 import v2xvit.hypes_yaml.yaml_utils as yaml_utils
 from v2xvit.tools import train_utils
-from v2xvit.data_utils.datasets import build_dataset, build_motion_dataset
+from v2xvit.data_utils.datasets import build_dataset, build_motion_dataset, EarlyFusionDataset
 from v2xvit.tools.train_utils import to_device
+from v2xvit.compress.compression import CompressTools
 
 DEBUG = True
 
@@ -43,36 +44,24 @@ def train_parser():
                         help='Continued training path')
     parser.add_argument("--half", action='store_true', help="whether train with half precision")
     parser.add_argument('--stage', type=str, default='stage1', help='Training stage')
+    parser.add_argument('--compress_yaml', type=str, default=None, help='compress yaml file')
+    parser.add_argument('--compress_model', default='', help='model path')
     opt = parser.parse_args()
     return opt
 
-def debuging(hypes):
-    opencood_train_dataset = build_dataset(hypes, visualize=False, train=True)
-    opencood_train_dataset.__getitem__(0)
-    # opencood_validate_dataset = build_dataset(hypes, visualize=False, train=False)
-    print('debuging finished')
-    train_loader = DataLoader(opencood_train_dataset,
-                              batch_size=hypes['train_params']['batch_size'],
-                              num_workers=8,
-                              collate_fn=opencood_train_dataset.collate_batch_train,
-                              shuffle=True,
-                              pin_memory=False,
-                              drop_last=True)
-    # val_loader = DataLoader(opencood_validate_dataset,
-    #                         batch_size=hypes['train_params']['batch_size'],
-    #                         num_workers=8,
-    #                         collate_fn=opencood_train_dataset.collate_batch_train,
-    #                         shuffle=False,
-    #                         pin_memory=False,
-    #                         drop_last=True)
+
+EF_dpcc_fintune = easydict.EasyDict({'hypes_yaml': "/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_early_fusion.yaml",
+                                 'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/fintuned-dpcc-EF-perfect/',
+                                 'half': False,
+                                 'stage': 'stage1',
+                                 'compress_yaml': '/home/JJ_Group/cheny/D-PCC/configs/kitti.yaml',
+                                 'compress_model': '/home/JJ_Group/cheny/D-PCC/output/2023-01-09T19:04:01.790133/ckpt/ckpt-best.pth'
+                                 })
 
 def main():
     print(os.path.abspath('.'))
     if DEBUG:
-        opt = easydict.EasyDict({'hypes_yaml': "/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_early_fusion.yaml",
-                                 'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/early_fusion_noise/',
-                                 'half': False,
-                                 'stage': 'stage1'})
+        opt = EF_dpcc_fintune
         # opt = easydict.EasyDict({   'hypes_yaml': "/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_v2xvit_stage3_NotUseRTE_learnable_motion_bs1.yaml",
         #                             'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/with_noise_motion_complete_second_order_simple_learnable_Motion_bs1/',
         #                             'half': False,
@@ -88,6 +77,7 @@ def main():
     assert stage in ['stage1', 'stage2', 'stage3']
     assert stage == 'stage1' or opt.model_dir, 'stage 2 and 3 must have model_dir'
     print('stage: ', stage)
+    use_compress = True if opt.compress_yaml else False
 
     set_random_seed(666, True)
 
@@ -108,14 +98,14 @@ def main():
 
         train_loader = DataLoader(opencood_train_dataset,
                                   batch_size=hypes['train_params']['batch_size'],
-                                  num_workers=8,
+                                  num_workers=4,
                                   collate_fn=opencood_train_dataset.collate_batch_train,
                                   shuffle=True,
                                   pin_memory=False,
                                   drop_last=True)
         val_loader = DataLoader(opencood_validate_dataset,
                                 batch_size=hypes['train_params']['batch_size'],
-                                num_workers=8,
+                                num_workers=4,
                                 collate_fn=opencood_train_dataset.collate_batch_train,
                                 shuffle=False,
                                 pin_memory=False,
@@ -142,6 +132,19 @@ def main():
 
     print('Creating Model')
     model = train_utils.create_model(hypes)
+    if use_compress:
+        compress_hypes = yaml_utils.load_yaml(opt.compress_yaml, opt)
+        compress_hypes = easydict.EasyDict(compress_hypes)
+        # compress_hypes.downsample_rate = [1 / 3, 1 / 3, 1 / 3]
+        compress_model = CompressTools(compress_hypes, hypes['preprocess']['cav_lidar_range'], opt.compress_model,
+                                       use_patch=True)
+        print('-------------compress model loaded-------------')
+        assert isinstance(opencood_train_dataset, EarlyFusionDataset)
+        opencood_train_dataset.set_compress_model(compress_model)
+        opencood_validate_dataset.set_compress_model(compress_model)
+    else:
+        compress_hypes = None
+        compress_model = None
     if hypes['use_motion'] or stage == 'stage2':
         motion_model = train_utils.create_model(hypes, stage='stage2')
         print('motion model created')
@@ -254,6 +257,9 @@ def main():
         if epoch % hypes['train_params']['eval_freq'] == 0:
             validate_main_model(model, val_loader, criterion, device, writer, epoch)
 
+    if use_compress:
+        yaml_utils.save_yaml(compress_model.__repr__(), os.path.join(opt.model_dir, 'eval.yaml'))
+        print(compress_model)
 
     # from v2xvit.data_utils.datasets.basedataset import max_timedelay
     # print(max_timedelay)
@@ -334,4 +340,5 @@ def validate_main_model(model, val_loader, criterion, device, writer, epoch):
 
 
 if __name__ == '__main__':
+    torch.multiprocessing.set_start_method('spawn')
     main()

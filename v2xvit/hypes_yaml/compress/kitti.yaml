@@ -1,0 +1,52 @@
+dataset: 'semantickitti'
+# optimizer
+lr: 1e-3
+aux_lr: 1e-3
+weight_decay: 0
+betas: [0.9, 0.999]
+# lr scheduler
+lr_decay_step: 15
+gamma: 0.5
+# dataset
+train_data_path: './data/semantickitti/semantickittinew_train_cube_size_12.pkl'
+train_cube_size: 12
+val_data_path: './data/semantickitti/semantickittinew_val_cube_size_12.pkl'
+val_cube_size: 12
+test_data_path: './data/semantickitti/semantickittinew_test_cube_size_12.pkl'
+test_cube_size: 12
+peak:         # peak value for PSNR calculation
+# train
+epochs: 50
+batch_size: 1
+print_freq: 1000
+save_freq: 10
+output_path: './output'
+# attribute compression
+compress_normal: true
+in_fdim: 3
+# model
+k: 16
+downsample_rate: [0.3333333333, 0.3333333333, 0.3333333333]
+max_upsample_num: [8, 8, 8]
+layer_num: 3
+dim: 8
+hidden_dim: 64
+ngroups: 1
+quantize_latent_xyzs: True
+latent_xyzs_conv_mode: 'mlp'
+sub_point_conv_mode: 'mlp'
+# loss
+chamfer_coe: 0.1
+pts_num_coe: 5e-7
+normal_coe: 1e-2
+bpp_lambda: 1e-3
+mean_distance_coe: 5e1
+density_coe: 1e-4
+latent_xyzs_coe: 1e-2
+# test
+model_path: 'path to ckpt'
+density_radius: 0.15
+dist_coe: 1e-5
+omega_xyzs: 0.5
+omega_normals: 0.5
+

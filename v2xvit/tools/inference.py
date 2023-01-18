@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 import tqdm
 
 import v2xvit.hypes_yaml.yaml_utils as yaml_utils
+from v2xvit.compress.compression import CompressTools
 from v2xvit.tools import train_utils, infrence_utils
 from v2xvit.data_utils.datasets import build_dataset
 from v2xvit.visualization import vis_utils
@@ -40,20 +41,24 @@ def test_parser():
                         default='stage3')
     parser.add_argument('--load_epoch', required=False, type=int,
                         default=None)
+    parser.add_argument('--compress_yaml', type=str, default=None, help='compress yaml file')
+    parser.add_argument('--compress_model', default='', help='model path')
     opt = parser.parse_args()
     return opt
 
 
 EF_dict = easydict.EasyDict(
     {'hypes_yaml': '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_early_fusion.yaml',
-     'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/early_fusion_noise',
+     'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/point_pillar_early_fusion_baseline',
      'fusion_method': 'early',
-     'save_npy': False,
+     'save_npy': True,
      'save_vis': False,
      'show_vis': False,
      'show_sequence': False,
-     'load_epoch': 39,
-     'stage': 'stage1'})
+     'load_epoch': 22,
+     'stage': 'stage1',
+     'compress_yaml': '/home/JJ_Group/cheny/D-PCC/configs/kitti.yaml',
+     'compress_model': '/home/JJ_Group/cheny/D-PCC/output/2023-01-09T19:04:01.790133/ckpt/ckpt-best.pth'})
 
 MF_dict = easydict.EasyDict(
     {'hypes_yaml': '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/stage3_baseline_compress0.yaml',
@@ -86,7 +91,7 @@ def main():
     opencood_dataset = build_dataset(hypes, visualize=True, train=False)
     data_loader = DataLoader(opencood_dataset,
                              batch_size=1,
-                             num_workers=10,
+                             num_workers=8,
                              collate_fn=opencood_dataset.collate_batch_test,
                              shuffle=False,
                              pin_memory=False,
@@ -94,6 +99,20 @@ def main():
 
     print('Creating Model')
     model = train_utils.create_model(hypes)
+
+    use_compress = True if opt.compress_yaml else False
+    if use_compress:
+        compress_hypes = yaml_utils.load_yaml(opt.compress_yaml, opt)
+        compress_hypes = easydict.EasyDict(compress_hypes)
+        # compress_hypes.downsample_rate = [1 / 3, 1 / 3, 1 / 3]
+        compress_model = CompressTools(compress_hypes, hypes['preprocess']['cav_lidar_range'], opt.compress_model,
+                                       use_patch=True)
+        print('-------------compress model loaded-------------')
+        opencood_dataset.set_compress_model(compress_model)
+    else:
+        compress_hypes = None
+        compress_model = None
+
     motion_model = None
     if hypes['use_motion']:
         motion_model = train_utils.create_model(hypes, stage='stage2')
@@ -135,7 +154,6 @@ def main():
 
     pbar2 = tqdm.tqdm(total=len(data_loader), leave=True)
     for i, batch_data in enumerate(data_loader):
-        # print(i)
         pbar2.update(1)
         with torch.no_grad():
             if device == 'cuda':
@@ -235,9 +253,13 @@ def main():
 
     eval_utils.eval_final_results(result_stat,
                                   opt.model_dir)
+    if use_compress:
+        yaml_utils.save_yaml(compress_model.__repr__(), os.path.join(opt.model_dir, 'eval.yaml'))
+        print(compress_model)
     if opt.show_sequence:
         vis.destroy_window()
 
 
 if __name__ == '__main__':
+    torch.multiprocessing.set_start_method('spawn')
     main()
