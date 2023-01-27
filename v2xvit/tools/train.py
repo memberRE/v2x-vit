@@ -225,6 +225,18 @@ def main():
 
             batch_data = train_utils.to_device(batch_data, device)
 
+            voxel_features = batch_data['ego']['processed_lidar']['voxel_features']
+            voxel_coords = batch_data['ego']['processed_lidar']['voxel_coords']
+            voxel_num_points = batch_data['ego']['processed_lidar']['voxel_num_points']
+            if torch.isnan(voxel_features).any():
+                print('nan in voxel_features')
+                exit(0)
+            if torch.isnan(voxel_coords).any():
+                print('nan in voxel_coords')
+                exit(0)
+            if torch.isnan(voxel_num_points).any():
+                print('nan in voxel_num_points')
+                exit(0)
             # case1 : late fusion train --> only ego needed
             # case2 : early fusion train --> all data projected to ego
             # case3 : intermediate fusion --> ['ego']['processed_lidar']
@@ -232,6 +244,10 @@ def main():
             # as well
             if not opt.half:
                 ouput_dict = model(batch_data['ego'])
+                if torch.isnan(ouput_dict['rm']).any() or torch.isnan(ouput_dict['psm']).any():
+                    print('loss is nan')
+                    exit(0)
+
                 # first argument is always your output dictionary,
                 # second argument is always your label dictionary.
                 final_loss = criterion(ouput_dict, batch_data['ego']['label_dict'])

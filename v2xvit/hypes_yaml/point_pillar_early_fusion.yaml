@@ -5,10 +5,10 @@ yaml_parser: "load_point_pillar_params"
 use_motion: false
 
 wild_setting:
-  async: true
+  async: false
   async_overhead: 60
   seed: 20
-  loc_err: true
+  loc_err: false
   xyz_std: 0.2
   ryp_std: 0.2
 

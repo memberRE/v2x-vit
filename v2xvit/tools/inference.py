@@ -49,13 +49,13 @@ def test_parser():
 
 EF_dict = easydict.EasyDict(
     {'hypes_yaml': '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_early_fusion.yaml',
-     'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/point_pillar_early_fusion_baseline',
+     'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/fintuned-dpcc-EF-perfect',
      'fusion_method': 'early',
      'save_npy': True,
      'save_vis': False,
      'show_vis': False,
      'show_sequence': False,
-     'load_epoch': 22,
+     'load_epoch': 42,
      'stage': 'stage1',
      'compress_yaml': '/home/JJ_Group/cheny/D-PCC/configs/kitti.yaml',
      'compress_model': '/home/JJ_Group/cheny/D-PCC/output/2023-01-09T19:04:01.790133/ckpt/ckpt-best.pth'})

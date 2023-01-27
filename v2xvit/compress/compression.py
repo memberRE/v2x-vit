@@ -92,21 +92,6 @@ class CompressTools:
 
         return model
 
-    # def normalize(self, xyzs):
-    #     # normalize xyzs
-    #     center = torch.mean(xyzs, dim=1, keepdim=True)
-    #     xyzs = xyzs - center
-    #     xyzs = 2 * xyzs / self.range
-    #
-    #     return xyzs, center
-    #
-    # def denormalize(self, xyzs, center):
-    #     # denormalize xyzs
-    #     xyzs = xyzs * self.range / 2
-    #     xyzs = xyzs + center
-    #
-    #     return xyzs
-
     def fakeCompress(self, input, normals):
         with torch.no_grad():
             # normalize xyzs

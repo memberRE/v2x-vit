@@ -18,6 +18,7 @@ class SpVoxelPreprocessor(BasePreprocessor):
         super(SpVoxelPreprocessor, self).__init__(preprocess_params,
                                                   train)
 
+        self.voxel_generator = None
         self.lidar_range = self.params['cav_lidar_range']
         # i guess [x_begin, y_begin, z_begin, x_end, y_end, z_end]
         # ego is zero point, and front is positive direction of x, left is y positive, top is z, unit is meter
@@ -32,17 +33,26 @@ class SpVoxelPreprocessor(BasePreprocessor):
         grid_size = (np.array(self.lidar_range[3:6]) -
                      np.array(self.lidar_range[0:3])) / np.array(self.voxel_size)
         self.grid_size = np.round(grid_size).astype(np.int64)
-
+        self.is_init = False
         # use sparse conv library to generate voxel
-        self.voxel_generator = PointToVoxel(
-            vsize_xyz=self.voxel_size,
-            coors_range_xyz=self.lidar_range,
-            max_num_points_per_voxel=self.max_points_per_voxel,
-            num_point_features=4,
-            max_num_voxels=self.max_voxels
-        )
+        # self.voxel_generator = PointToVoxel(
+        #     vsize_xyz=self.voxel_size,
+        #     coors_range_xyz=self.lidar_range,
+        #     max_num_points_per_voxel=self.max_points_per_voxel,
+        #     num_point_features=4,
+        #     max_num_voxels=self.max_voxels
+        # )
 
     def preprocess(self, pcd_np):
+        if not self.is_init:
+            self.voxel_generator = PointToVoxel(
+                vsize_xyz=self.voxel_size,
+                coors_range_xyz=self.lidar_range,
+                max_num_points_per_voxel=self.max_points_per_voxel,
+                num_point_features=4,
+                max_num_voxels=self.max_voxels
+            )
+            self.is_init = True
         data_dict = {}
         pcd_tv = torch.from_numpy(pcd_np).float()
         voxel_output = self.voxel_generator(pcd_tv)
