@@ -21,6 +21,7 @@ from v2xvit.utils.pcd_utils import \
 
 DEBUG = True
 
+
 class EarlyFusionDataset(basedataset.BaseDataset):
     def __init__(self, params, visualize, train=True, compress=None):
         super(EarlyFusionDataset, self).__init__(params, visualize, train)
@@ -31,15 +32,22 @@ class EarlyFusionDataset(basedataset.BaseDataset):
         self.mask_first = params.get('mask_first', True)
         self.sample_points = params.get('sample_points', -1)
         self.compress_model = compress
+        self.sample_rates = params.get('sample_rates', 0)
+        # self.recon_mode = params.get('recon_mode', 'perBlock')
+        # assert self.recon_mode in ['perBlock', 'allin']
 
         if DEBUG:
             self.sample_points = -1
             self.spare = True
             self.mask_first = True
-            print('DEBUG mode, sample points: {}, mask_first: {}'.format(self.sample_points, self.mask_first))
+            self.sample_rates = 0
+            self.recon_mode = 'perBlock'
+            print('DEBUG mode, sample points: {}, mask_first: {}, recon_mode: {}'
+                  .format(self.sample_points, self.mask_first, self.recon_mode))
 
     def set_compress_model(self, compress_model):
         self.compress_model = compress_model
+        print('using D-PCC compression')
 
     def __getitem__(self, idx):
         base_data_dict = self.retrieve_base_data(idx, cur_ego_pose_flag=True)
@@ -63,6 +71,8 @@ class EarlyFusionDataset(basedataset.BaseDataset):
         projected_lidar_stack = []
         object_stack = []
         object_id_stack = []
+        bpp_stack = []
+        size_stack = []
 
         spatial_correction_matrix = []
 
@@ -85,15 +95,19 @@ class EarlyFusionDataset(basedataset.BaseDataset):
             # already.
             lidar = selected_cav_processed['projected_lidar']
             if self.spare and cav_id != ego_id:
+                # lidar = lidar.astype(np.float16)
+                # lidar = lidar.astype(np.float32)
                 if self.mask_first and not self.train:
                     lidar = mask_points_by_range(lidar, self.params['preprocess']['cav_lidar_range'])
                 # lidar = torch.from_numpy(lidar[None, ...])
                 if self.sample_points > 0:
-                    lidar = spare_point_cloud(torch.from_numpy(lidar[None, ...]), self.sample_points)
-                    lidar = lidar[0, ...].numpy()
+                    lidar = spare_point_cloud(torch.from_numpy(lidar[None, ...]).cuda(), self.sample_points)
+                    lidar = lidar[0, ...].detach().cpu().numpy()
                 if self.compress_model is not None:
                     try:
-                        lidar = self.compress_model(lidar)
+                        lidar, bpp, compress_size = self.compress_model(lidar)
+                        bpp_stack.append(bpp)
+                        size_stack.append(compress_size)
                     except Exception as e:
                         print(e)
                         print('compress error, index: {}'.format(idx))
@@ -118,7 +132,7 @@ class EarlyFusionDataset(basedataset.BaseDataset):
         mask[:object_stack.shape[0]] = 1
 
         # convert list to numpy array, (N, 4)
-        projected_lidar_stack = np.vstack(projected_lidar_stack)    # about 116875 points
+        projected_lidar_stack = np.vstack(projected_lidar_stack)  # about 116875 points
 
         # data augmentation
         projected_lidar_stack, object_bbx_center, mask = \
@@ -146,7 +160,7 @@ class EarlyFusionDataset(basedataset.BaseDataset):
         object_bbx_center[object_bbx_center_valid.shape[0]:] = 0
 
         # pre-process the lidar to voxel/bev/downsampled lidar
-        lidar_dict = self.pre_processor.preprocess(projected_lidar_stack)   # about 3000 voxels
+        lidar_dict = self.pre_processor.preprocess(projected_lidar_stack)  # about 3000 voxels
 
         # generate the anchor boxes
         anchor_box = self.post_processor.generate_anchor_box()
@@ -170,7 +184,9 @@ class EarlyFusionDataset(basedataset.BaseDataset):
              'velocity': [0],
              'time_delay': [0],
              'infra': [0],
-             'label_dict': label_dict})
+             'label_dict': label_dict,
+             'bpp_stack': bpp_stack,
+             'size_stack': size_stack})
 
         if self.visualize:
             processed_data_dict['ego'].update({'origin_lidar':
@@ -290,7 +306,9 @@ class EarlyFusionDataset(basedataset.BaseDataset):
                                         'record_len': record_len,
                                         'label_dict': label_torch_dict,
                                         'object_ids': object_ids,
-                                        'transformation_matrix': transformation_matrix_torch})
+                                        'transformation_matrix': transformation_matrix_torch,
+                                        'bpp_stack': cav_content['bpp_stack'],
+                                        'size_stack': cav_content['size_stack']})
 
             if self.visualize:
                 origin_lidar = \

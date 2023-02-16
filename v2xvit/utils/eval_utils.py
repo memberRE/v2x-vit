@@ -128,7 +128,7 @@ def calculate_ap(result_stat, iou):
     return ap, mrec, mprec
 
 
-def eval_final_results(result_stat, save_path):
+def eval_final_results(result_stat, save_path, bpps = None, compress_size = None):
     dump_dict = {}
 
     ap_30, mrec_30, mpre_30 = calculate_ap(result_stat, 0.30)
@@ -143,8 +143,12 @@ def eval_final_results(result_stat, save_path):
                       'mpre_70': mpre_70,
                       'mrec_70': mrec_70,
                       })
+    if bpps is not None:
+        dump_dict.update({'bpps': bpps})
+    if compress_size is not None:
+        dump_dict.update({'compress_size': compress_size})
     yaml_utils.save_yaml(dump_dict, os.path.join(save_path, 'eval.yaml'))
 
-    print('The Average Precision at IOU 0.3 is %.2f, '
-          'The Average Precision at IOU 0.5 is %.2f, '
-          'The Average Precision at IOU 0.7 is %.2f' % (ap_30, ap_50, ap_70))
+    print('\nThe Average Precision at IOU 0.3 is %.2f, '
+          '\nThe Average Precision at IOU 0.5 is %.2f, '
+          '\nThe Average Precision at IOU 0.7 is %.2f' % (ap_30, ap_50, ap_70))

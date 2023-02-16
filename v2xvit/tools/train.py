@@ -51,11 +51,11 @@ def train_parser():
 
 
 EF_dpcc_fintune = easydict.EasyDict({'hypes_yaml': "/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_early_fusion.yaml",
-                                 'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/fintuned-dpcc-EF-perfect/',
+                                 'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/fintuned-dpcc-EF-perfect-bpp6/',
                                  'half': False,
                                  'stage': 'stage1',
-                                 'compress_yaml': '/home/JJ_Group/cheny/D-PCC/configs/kitti.yaml',
-                                 'compress_model': '/home/JJ_Group/cheny/D-PCC/output/2023-01-09T19:04:01.790133/ckpt/ckpt-best.pth'
+                                 'compress_yaml': '/home/JJ_Group/cheny/D-PCC/configs/kitti_bpp6.yaml',
+                                 'compress_model': '/home/JJ_Group/cheny/D-PCC/output/bpp6/ckpt/ckpt-best.pth'
                                  })
 
 def main():

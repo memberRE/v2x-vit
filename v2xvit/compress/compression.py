@@ -66,7 +66,7 @@ def divide_cube(xyzs, attribute, map_size=100, cube_size=12):
     return output_points, meta_data
 
 class CompressTools:
-    def __init__(self, cfg, range, model_path=None, dataset=None, train=False, use_patch = False, mapsize = 100, cube_size=12):
+    def __init__(self, cfg, range, model_path=None, dataset=None, train=False, use_patch=False, mapsize = 100, cube_size=12):
         self.cfg = cfg
         self.dataset = dataset
         self.train = train
@@ -83,6 +83,11 @@ class CompressTools:
     def load_model(self, args, model_path):
         # load model
         model = AutoEncoder(args).cuda()
+        params = torch.load(model_path)
+        for i in params.keys():
+            if i.startswith('feats_eblock') or i.startswith('xyzs_eblock'):
+                if i.endswith('_offset') or i.endswith('_quantized_cdf') or i.endswith('_cdf_length'):
+                    params[i] = torch.tensor([], dtype=params[i].dtype, device=params[i].device)
         model.load_state_dict(torch.load(model_path))
         # update entropy bottleneck
         model.feats_eblock.update(force=True)
@@ -111,9 +116,10 @@ class CompressTools:
             pred_patches, upsampled_feats, decode_time \
                 = self.decompress(latent_xyzs_str, xyzs_size, latent_feats_str, feats_size)
 
-            pred_normals = torch.tanh(upsampled_feats).permute(0, 2, 1).contiguous()
-            pred_normals = torch.mean(pred_normals, dim=2, keepdim=True)
+            # pred_normals = torch.tanh(upsampled_feats).permute(0, 2, 1).contiguous()
+            # pred_normals = torch.mean(pred_normals, dim=2, keepdim=True)
             # TODO: use sigmoid instead of tanh
+            pred_normals = torch.sigmoid(upsampled_feats).permute(0, 2, 1).contiguous()
 
             pred_normals = torch.clamp(pred_normals, 0, 1)
 
@@ -122,8 +128,8 @@ class CompressTools:
             # pred_patches = self.denormalize(pred_patches, center)
             # output = torch.cat((pred_patches, pred_normals), dim=2)
             self.bppavg.update(actual_bpp)
-            self.compress_size.update(actual_bpp * points_num)
-            return pred_patches, pred_normals, actual_bpp
+            # self.compress_size.update(actual_bpp * points_num)
+            return pred_patches, pred_normals, actual_bpp, actual_bpp * points_num
 
     def compress(self, xyzs, feats):
         # input: (b, c, n)
@@ -200,6 +206,8 @@ class CompressTools:
         cubes, meta_data = divide_cube(lidar_xyz, attribute=lidar_normals, cube_size=self.cube_size)
 
         points = []
+        sizes = 0
+        bpps = AverageMeter()
 
         for patch_idx in cubes.keys():
             if cubes[patch_idx].shape[0] < 100:
@@ -213,7 +221,9 @@ class CompressTools:
             xyzs = 2 * (xyzs - center) / self.cube_size
             xyzs = torch.tensor(xyzs).float().cuda()
             normals = torch.tensor(normals).float().cuda()
-            pred_patches, pred_normals, bpp = self.fakeCompress(xyzs[None, ...], normals[None, ...])
+            pred_patches, pred_normals, bpp, compress_size_patch = self.fakeCompress(xyzs[None, ...], normals[None, ...])
+            sizes += compress_size_patch
+            bpps.update(bpp)
 
             pred_patches = pred_patches * self.cube_size / 2 + torch.tensor(center).float().to(pred_patches.device)
             pred_patches = pred_patches / 100
@@ -226,16 +236,8 @@ class CompressTools:
             points.append(out)
 
         pred_pcd = np.concatenate(points, axis=0)
-
-
-        # out, bpp = self.fakeCompress(map_xyzs[None, ...], lidar_normals[None, ...])
-        # out = out[0, ...]
-        # out[:, :3] = out[:, :3] / self.range
-        # out = out.cpu().numpy()
-        # out[:, :3] = out[:, :3] * (max_coord - min_coord)
-        # out[:, :3] += min_coord
-        # out[:, :3] += shift
-        return pred_pcd
+        self.compress_size.update(sizes)
+        return pred_pcd, bpps.get_avg() ,sizes
 
     def __repr__(self):
         return 'avg_bpp: {:.4f}, avg_compress_size: {:.4f} bits'.format(self.bppavg.avg, self.compress_size.avg)

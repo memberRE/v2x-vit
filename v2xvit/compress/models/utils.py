@@ -20,6 +20,11 @@ class AverageMeter(object):
         self.count = 0
 
     def update(self, val, n=1):
+        if isinstance(val, list):
+            assert n == 1
+            for i in val:
+                self.update(i)
+            return
         self.val = val
         self.sum += val * n
         self.count += n

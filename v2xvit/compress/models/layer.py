@@ -418,7 +418,7 @@ class FeatsUpsampleLayer(nn.Module):
         # weather decompress normal
         self.decompress_normal = decompress_normal
         if self.decompress_normal:
-            self.out_fdim = 3
+            self.out_fdim = 1
         else:
             self.out_fdim = args.dim
 
