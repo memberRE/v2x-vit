@@ -10,6 +10,7 @@ import tqdm
 
 import v2xvit.hypes_yaml.yaml_utils as yaml_utils
 from v2xvit.compress.compression import CompressTools
+from v2xvit.compress.models.utils import AverageMeter
 from v2xvit.tools import train_utils, infrence_utils
 from v2xvit.data_utils.datasets import build_dataset
 from v2xvit.visualization import vis_utils
@@ -46,19 +47,47 @@ def test_parser():
     opt = parser.parse_args()
     return opt
 
+# def debug_args():
+#     parser = argparse.ArgumentParser(description='Debug Arguments')
+#     parser.add_argument('--yaml', type=int, required=True, help='yaml file')
+#     parser.add_argument('--model_path', type=int, required=True, help='model file')
+#
+#     args = parser.parse_args()
+#     return args
+
+# yamls = ['',
+#          r'/home/JJ_Group/cheny/D-PCC/configs/kitti.yaml',
+#          r'/home/JJ_Group/cheny/D-PCC/configs/kitti_bpp2.yaml',
+#          r'/home/JJ_Group/cheny/D-PCC/configs/kitti_bpp3.yaml',
+#          r'/home/JJ_Group/cheny/D-PCC/configs/kitti_bpp4.yaml',
+#          r'/home/JJ_Group/cheny/D-PCC/configs/kitti_bpp5.yaml',
+#          r'/home/JJ_Group/cheny/D-PCC/configs/kitti_bpp6.yaml']
+#
+# models = ['',
+#           r'/home/JJ_Group/cheny/D-PCC/output/bpp18_no_bug/ckpt/ckpt-best.pth',
+#           r'/home/JJ_Group/cheny/D-PCC/output/bpp2/ckpt/ckpt-best.pth',
+#           r'/home/JJ_Group/cheny/D-PCC/output/bpp3/ckpt/ckpt-best.pth', ]
+
+num_workers = 8
 
 EF_dict = easydict.EasyDict(
     {'hypes_yaml': '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_early_fusion.yaml',
-     'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/fintuned-dpcc-EF-perfect',
+     # 'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/fintuned-dpcc-EF-perfect-bpp4',
+     'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/point_pillar_early_fusion_baseline',
      'fusion_method': 'early',
-     'save_npy': True,
+     'save_npy': False,
      'save_vis': False,
      'show_vis': False,
      'show_sequence': False,
-     'load_epoch': 42,
+     'load_epoch': 22,
      'stage': 'stage1',
-     'compress_yaml': '/home/JJ_Group/cheny/D-PCC/configs/kitti.yaml',
-     'compress_model': '/home/JJ_Group/cheny/D-PCC/output/2023-01-09T19:04:01.790133/ckpt/ckpt-best.pth'})
+     # 'compress_yaml': '/home/JJ_Group/cheny/D-PCC/configs/kitti.yaml',
+     # 'compress_model': '/home/JJ_Group/cheny/D-PCC/output/bpp18_no_bug/ckpt/ckpt-best.pth'
+     'compress_yaml': '/home/JJ_Group/cheny/D-PCC/configs/kitti_bpp3_noxyz.yaml',
+     'compress_model': '/home/JJ_Group/cheny/D-PCC/output/2023-02-12T00:42:10.442681_kitti_bpp3_noxyz/ckpt/ckpt-best.pth'
+     # 'compress_yaml': None,
+     # 'compress_model': None
+     })
 
 MF_dict = easydict.EasyDict(
     {'hypes_yaml': '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/stage3_baseline_compress0.yaml',
@@ -76,6 +105,7 @@ def main():
     print(os.path.abspath('.'))
     if DEBUG:
         opt = EF_dict
+        print(EF_dict)
     else:
         opt = test_parser()
     assert opt.fusion_method in ['late', 'early', 'intermediate']
@@ -91,7 +121,7 @@ def main():
     opencood_dataset = build_dataset(hypes, visualize=True, train=False)
     data_loader = DataLoader(opencood_dataset,
                              batch_size=1,
-                             num_workers=8,
+                             num_workers=num_workers,
                              collate_fn=opencood_dataset.collate_batch_test,
                              shuffle=False,
                              pin_memory=False,
@@ -109,6 +139,8 @@ def main():
                                        use_patch=True)
         print('-------------compress model loaded-------------')
         opencood_dataset.set_compress_model(compress_model)
+        bpps = AverageMeter()
+        compress_size = AverageMeter()
     else:
         compress_hypes = None
         compress_model = None
@@ -165,6 +197,9 @@ def main():
                                                          model,
                                                          opencood_dataset)
             elif opt.fusion_method == 'early':
+                if use_compress:
+                    bpps.update(batch_data['ego']['bpp_stack'])
+                    compress_size.update(batch_data['ego']['size_stack'])
                 pred_box_tensor, pred_score, gt_box_tensor = \
                     infrence_utils.inference_early_fusion(batch_data,
                                                           model,
@@ -252,10 +287,12 @@ def main():
                 time.sleep(0.001)
 
     eval_utils.eval_final_results(result_stat,
-                                  opt.model_dir)
+                                  opt.model_dir,
+                                  bpps=bpps.get_avg() if use_compress else None,
+                                  compress_size=compress_size.get_avg() if use_compress else None)
     if use_compress:
-        yaml_utils.save_yaml(compress_model.__repr__(), os.path.join(opt.model_dir, 'eval.yaml'))
-        print(compress_model)
+        repr_bpp = 'bpp: {}, compress_size: {}'.format(bpps.get_avg(), compress_size.get_avg())
+        print(repr_bpp)
     if opt.show_sequence:
         vis.destroy_window()
 
