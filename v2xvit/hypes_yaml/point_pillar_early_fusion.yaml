@@ -14,7 +14,7 @@ wild_setting:
 
 train_params:
   batch_size: &batch_size 4
-  epoches: 42
+  epoches: 62
   eval_freq: 1
   save_freq: 1
 

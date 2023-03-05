@@ -132,7 +132,7 @@ class PillarVFE(nn.Module):
             points_dist = torch.norm(voxel_features[:, :, :3], 2, 2,
                                      keepdim=True)
             features.append(points_dist)
-        features = torch.cat(features, dim=-1)
+        features = torch.cat(features, dim=-1)  # N, max_points, C'
 
         voxel_count = features.shape[1]
         mask = self.get_paddings_indicator(voxel_num_points, voxel_count,

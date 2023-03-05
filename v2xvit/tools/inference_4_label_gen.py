@@ -12,7 +12,7 @@ import v2xvit.hypes_yaml.yaml_utils as yaml_utils
 from v2xvit.compress.compression import CompressTools
 from v2xvit.compress.models.utils import AverageMeter
 from v2xvit.tools import train_utils, infrence_utils
-from v2xvit.data_utils.datasets import build_dataset
+from v2xvit.data_utils.datasets import build_dataset, EarlyFusion4LabelGenerate
 from v2xvit.visualization import vis_utils
 from v2xvit.utils import eval_utils
 
@@ -48,7 +48,7 @@ def test_parser():
     return opt
 
 
-num_workers = 4
+num_workers = 8
 
 EF_dict = easydict.EasyDict(
     {'hypes_yaml': '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_early_fusion.yaml',
@@ -119,10 +119,16 @@ def main():
         'image mode or video mode'
 
     hypes = yaml_utils.load_yaml(opt.hypes_yaml, opt)
+    # hypes['validate_dir'] = hypes['root_dir']   # !!! only for label generation
     stage = opt.stage
 
     print('Dataset Building')
-    opencood_dataset = build_dataset(hypes, visualize=True, train=False)
+    # opencood_dataset = build_dataset(hypes, visualize=True, train=False)
+    opencood_dataset = EarlyFusion4LabelGenerate(
+        params=hypes,
+        visualize=True,
+        train=False
+    )
     data_loader = DataLoader(opencood_dataset,
                              batch_size=1,
                              num_workers=num_workers,
@@ -203,10 +209,11 @@ def main():
             elif opt.fusion_method == 'early':
                 bpps.update(batch_data['ego']['bpp_stack'])
                 compress_size.update(batch_data['ego']['size_stack'])
-                pred_box_tensor, pred_score, gt_box_tensor = \
-                    infrence_utils.inference_early_fusion(batch_data,
+                pred_box_tensor, pred_score, gt_box_tensor, obj_id = \
+                    infrence_utils.inference_early_fusion_4_label_gen(batch_data,
                                                           model,
                                                           opencood_dataset)
+                eval_utils.caluclate_tp_fp_4_save(pred_box_tensor, pred_score, gt_box_tensor, obj_id, batch_data['ego']['path'])
             elif opt.fusion_method == 'intermediate':
                 pred_box_tensor, pred_score, gt_box_tensor = \
                     infrence_utils.inference_intermediate_fusion(batch_data,

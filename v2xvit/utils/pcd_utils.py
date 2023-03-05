@@ -51,7 +51,7 @@ def mask_points_by_range(points, limit_range):
         Filtered lidar points.
     """
 
-    mask = (points[:, 0] > limit_range[0]) & (points[:, 0] < limit_range[3])\
+    mask = (points[:, 0] > limit_range[0]) & (points[:, 0] < limit_range[3]) \
            & (points[:, 1] > limit_range[1]) & (
                    points[:, 1] < limit_range[4]) \
            & (points[:, 2] > limit_range[2]) & (
@@ -81,6 +81,29 @@ def mask_ego_points(points):
     points = points[np.logical_not(mask)]
 
     return points
+
+
+def mask_point_by_label(pcd_np, label, threshold=0):
+    """
+    Mask the lidar points by label.
+
+    Parameters
+    ----------
+    pcd_np : np.ndarray
+        The lidar points, (n, 4).
+
+    label : int
+        The label of the lidar points.
+
+    Returns
+    -------
+    pcd_np : np.ndarray
+        The masked lidar points.
+    """
+    mask = label > threshold
+    pcd_np = pcd_np[mask]
+
+    return pcd_np
 
 
 def shuffle_points(points):

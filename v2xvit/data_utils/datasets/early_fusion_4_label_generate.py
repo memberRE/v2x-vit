@@ -3,7 +3,6 @@ Dataset class for early fusion
 """
 import math
 import os
-import pickle
 import warnings
 from collections import OrderedDict
 
@@ -12,8 +11,7 @@ import torch
 
 import v2xvit
 from v2xvit.hypes_yaml import yaml_utils
-from v2xvit.models.pointnet_util import spare_point_cloud, index_points
-from v2xvit.compress.models.FPS.pointnet2_utils import furthest_point_sample_weights, spare_point_cloud_weighted
+from v2xvit.models.pointnet_util import spare_point_cloud
 from v2xvit.utils import box_utils
 from v2xvit.data_utils.post_processor import build_postprocessor
 from v2xvit.data_utils.datasets import basedataset
@@ -27,9 +25,9 @@ from v2xvit.utils.transformation_utils import x1_to_x2
 DEBUG = True
 
 
-class EarlyFusionDataset(basedataset.BaseDataset):
+class EarlyFusion4LabelGenerate(basedataset.BaseDataset):
     def __init__(self, params, visualize, train=True, compress=None):
-        super(EarlyFusionDataset, self).__init__(params, visualize, train)
+        super(EarlyFusion4LabelGenerate, self).__init__(params, visualize, train)
         self.pre_processor = build_preprocessor(params['preprocess'],
                                                 train)
         self.post_processor = build_postprocessor(params['postprocess'], train)
@@ -43,92 +41,21 @@ class EarlyFusionDataset(basedataset.BaseDataset):
         assert self.label_mode in ['bin_MSE', 'bin_cross_entropy', 'multi_MSE', 'multi_cross_entropy', 'foreground_all']
         # self.recon_mode = params.get('recon_mode', 'perBlock')
         # assert self.recon_mode in ['perBlock', 'allin']
-        self.spare_mode = params.get('spare_mode', 'FPS')
-        assert self.spare_mode in ['FPS', 'W_FPS', 'W_FPS_perBlock']
-        # FPS: Furthest Point Sampling
-        # W_FPS: Weighted Furthest Point Sampling
-        # W_FPS_perBlock: Furthest Point Sampling but different sample rates for different blocks according to weights
 
         if DEBUG:
             self.sample_points = -1
-            self.sample_rates = 0.01
-            self.use_strange_sample_mode = False
-            # if True, sample_points = sample_rate*num_points_foreground, only used in W_FPS with use_label_mask=False
+            self.sample_rates = 0
             self.spare = True
             self.mask_first = True
-            self.spare_mode = 'W_FPS'
-            self.label_mode = 'bin_MSE'
+            # self.label_mode = 'foreground_all'
+            self.label_mode = 'foreground_all'
             self.use_label_mask = True
-            print('DEBUG mode, sample points: {}, '
-                  'sample rate: {}, '
-                  'mask_first: {}, '
-                  'label_mode: {}, '
-                  'use_label_mask: {}, '
-                  'spare_by_weight: {}'
-                  'use_strange_sample_mode: {}'
-                  .format(self.sample_points,
-                          self.sample_rates,
-                          self.mask_first,
-                          self.label_mode,
-                          self.use_label_mask,
-                          self.spare_mode,
-                          self.use_strange_sample_mode))
-            assert self.use_strange_sample_mode is False or self.spare_mode == 'W_FPS' and self.use_label_mask is False
+            print('DEBUG mode, sample points: {}, sample rate: {}, mask_first: {}, label_mode: {}, use_label_mask: {}'
+                  .format(self.sample_points, self.sample_rates, self.mask_first, self.label_mode, self.use_label_mask))
 
     def set_compress_model(self, compress_model):
         self.compress_model = compress_model
         print('using D-PCC compression')
-
-    def debug(self, idx):
-        base_data_dict = self.retrieve_base_data(idx, cur_ego_pose_flag=True)
-        ego_id = -1
-        for cav_id, cav_content in base_data_dict.items():
-            if cav_content['ego']:
-                ego_id = cav_id
-                ego_lidar_pose = cav_content['params']['lidar_pose']
-                break
-
-        for cav_id, selected_cav_base in base_data_dict.items():
-            # check if the cav is within the communication range with ego
-            distance = \
-                math.sqrt((selected_cav_base['params']['lidar_pose'][0] -
-                           ego_lidar_pose[0]) ** 2 + (
-                                  selected_cav_base['params'][
-                                      'lidar_pose'][1] - ego_lidar_pose[
-                                      1]) ** 2)
-            if distance > v2xvit.data_utils.datasets.COM_RANGE:
-                continue
-
-            selected_cav_processed = self.get_item_single_car(
-                selected_cav_base,
-                ego_lidar_pose,
-                base_data_dict[ego_id])
-            # all these lidar and object coordinates are projected to ego
-            # already.
-            lidar = selected_cav_processed['projected_lidar']
-            if self.spare and cav_id != ego_id:
-                veh_mask = selected_cav_processed.get('lidar_label', None)
-                if self.use_label_mask:
-                    lidar = mask_point_by_label(lidar, veh_mask)
-                    veh_mask = veh_mask[veh_mask > 0]
-                if self.mask_first and not self.train:
-                    lidar = np.hstack((lidar, veh_mask.reshape(-1, 1)))
-                    lidar = mask_points_by_range(lidar, self.params['preprocess']['cav_lidar_range'])
-                    veh_mask = lidar[:, -1]
-                    lidar = lidar[:, :-1]
-                sample_points = int(lidar.shape[0] * self.sample_rates) \
-                    if self.sample_rates > 0 else self.sample_points
-                if self.use_strange_sample_mode:
-                    sample_points = int(np.sum(veh_mask > 0) * self.sample_rates)
-                if sample_points > 0:
-                    lidar = torch.from_numpy(lidar[None, ...].astype(np.float32)).cuda()
-                    if self.spare_mode == 'FPS':
-                        lidar = spare_point_cloud(lidar, sample_points)
-                    elif self.spare_mode == 'W_FPS':
-                        lidar = spare_point_cloud_weighted(lidar, veh_mask, sample_points)
-                    else:
-                        raise NotImplementedError
-                    lidar = lidar[0, ...].detach().cpu().numpy()
 
     def __getitem__(self, idx):
         base_data_dict = self.retrieve_base_data(idx, cur_ego_pose_flag=True)
@@ -157,63 +84,26 @@ class EarlyFusionDataset(basedataset.BaseDataset):
 
         spatial_correction_matrix = []
 
-        # loop over all CAVs to process information
-        for cav_id, selected_cav_base in base_data_dict.items():
-            # check if the cav is within the communication range with ego
-            distance = \
-                math.sqrt((selected_cav_base['params']['lidar_pose'][0] -
-                           ego_lidar_pose[0]) ** 2 + (
-                                  selected_cav_base['params'][
-                                      'lidar_pose'][1] - ego_lidar_pose[
-                                      1]) ** 2)
-            if distance > v2xvit.data_utils.datasets.COM_RANGE:
-                continue
+        cav_id = ego_id
+        selected_cav_base = base_data_dict[cav_id]
 
-            selected_cav_processed = self.get_item_single_car(
-                selected_cav_base,
-                ego_lidar_pose,
-                base_data_dict[ego_id])
-            # all these lidar and object coordinates are projected to ego
-            # already.
-            lidar = selected_cav_processed['projected_lidar']
-            if self.spare and cav_id != ego_id:
-                veh_mask = selected_cav_processed.get('lidar_label', None)
-                if self.use_label_mask:
-                    lidar = mask_point_by_label(lidar, veh_mask)
-                    veh_mask = veh_mask[veh_mask > 0]
-                if self.mask_first and not self.train:
-                    lidar = np.hstack((lidar, veh_mask.reshape(-1, 1)))
-                    lidar = mask_points_by_range(lidar, self.params['preprocess']['cav_lidar_range'])
-                    veh_mask = lidar[:, -1]
-                    lidar = lidar[:, :-1]
-                sample_points = int(lidar.shape[0] * self.sample_rates) \
-                    if self.sample_rates > 0 else self.sample_points
-                if self.use_strange_sample_mode:
-                    sample_points = int(np.sum(veh_mask > 0) * self.sample_rates)
-                if sample_points > 0:
-                    lidar = torch.from_numpy(lidar[None, ...].astype(np.float32)).cuda()
-                    if self.spare_mode == 'FPS':
-                        lidar = spare_point_cloud(lidar, sample_points)
-                    elif self.spare_mode == 'W_FPS':
-                        lidar = spare_point_cloud_weighted(lidar, veh_mask, sample_points)
-                    else:
-                        raise NotImplementedError
-                    lidar = lidar[0, ...].detach().cpu().numpy()
-                if self.compress_model is not None:
-                    lidar, bpp, compress_size = self.compress_model(lidar)
-                    bpp_stack.append(bpp)
-                    size_stack.append(compress_size)
-                else:
-                    size_stack.append(lidar.shape[0] * 4 * 16)  # if not compressed, the size is 4*16
-            projected_lidar_stack.append(lidar)
-            object_stack.append(selected_cav_processed['object_bbx_center'])
-            object_id_stack += selected_cav_processed['object_ids']
-            spatial_correction_matrix.append(
-                selected_cav_base['params']['spatial_correction_matrix'])
+        selected_cav_processed = self.get_item_single_car(
+            selected_cav_base,
+            ego_lidar_pose,
+            base_data_dict[ego_id])
+        # all these lidar and object coordinates are projected to ego
+        # already.
+        lidar = selected_cav_processed['projected_lidar']
+
+        projected_lidar_stack.append(lidar)
+        object_stack.append(selected_cav_processed['object_bbx_center'])
+        object_id_stack += selected_cav_processed['object_ids']
+        spatial_correction_matrix.append(
+            selected_cav_base['params']['spatial_correction_matrix'])
 
         # exclude all repetitive objects
         unique_indices = \
-            [object_id_stack.index(x) for x in set(object_id_stack)]
+            [object_id_stack.index(x) for x in object_id_stack] # no need to unique
         object_stack = np.vstack(object_stack)
         object_stack = object_stack[unique_indices]
 
@@ -228,8 +118,8 @@ class EarlyFusionDataset(basedataset.BaseDataset):
         projected_lidar_stack = np.vstack(projected_lidar_stack)  # about 116875 points
 
         # data augmentation
-        projected_lidar_stack, object_bbx_center, mask = \
-            self.augment(projected_lidar_stack, object_bbx_center, mask)
+        # projected_lidar_stack, object_bbx_center, mask = \
+        #     self.augment(projected_lidar_stack, object_bbx_center, mask)  # no need to augment
 
         # we do lidar filtering in the stacked lidar
         # about 86172 points
@@ -238,14 +128,14 @@ class EarlyFusionDataset(basedataset.BaseDataset):
                                                          'cav_lidar_range'])
         # augmentation may remove some of the bbx out of range
         object_bbx_center_valid = object_bbx_center[mask == 1]
-        object_bbx_center_valid = \
-            box_utils.mask_boxes_outside_range_numpy(object_bbx_center_valid,
-                                                     self.params['preprocess'][
-                                                         'cav_lidar_range'],
-                                                     self.params[
-                                                         'postprocess'][
-                                                         'order']
-                                                     )
+        # object_bbx_center_valid = \
+        #     box_utils.mask_boxes_outside_range_numpy(object_bbx_center_valid,
+        #                                              self.params['preprocess'][
+        #                                                  'cav_lidar_range'],
+        #                                              self.params[
+        #                                                  'postprocess'][
+        #                                                  'order']
+        #                                              ) # no need to mask
         mask[object_bbx_center_valid.shape[0]:] = 0
         unique_indices = unique_indices[:object_bbx_center_valid.shape[0]]
         object_bbx_center[:object_bbx_center_valid.shape[0]] = \
@@ -279,7 +169,8 @@ class EarlyFusionDataset(basedataset.BaseDataset):
              'infra': [0],
              'label_dict': label_dict,
              'bpp_stack': bpp_stack,
-             'size_stack': size_stack})
+             'size_stack': size_stack,
+             'path': selected_cav_base['path']})
 
         if self.visualize:
             processed_data_dict['ego'].update({'origin_lidar':
@@ -287,7 +178,7 @@ class EarlyFusionDataset(basedataset.BaseDataset):
 
         return processed_data_dict
 
-    def get_item_single_car(self, selected_cav_base, ego_pose, ego_cav_base=None):
+    def get_item_single_car(self, selected_cav_base, ego_pose, ego_cav_base = None):
         """
         Project the lidar and bbx to ego space first, and then do clipping.
 
@@ -309,7 +200,7 @@ class EarlyFusionDataset(basedataset.BaseDataset):
         transformation_matrix = selected_cav_base['params'][
             'transformation_matrix']
 
-        point_label = self.generate_label_complement_weight(selected_cav_base, ego_cav_base)  # (N)
+        point_label = self.generate_label_complement(selected_cav_base, ego_cav_base)  # (N)
         point_label = point_label.reshape((-1, 1))  # N x 1
 
         # retrieve objects under ego coordinates
@@ -407,7 +298,8 @@ class EarlyFusionDataset(basedataset.BaseDataset):
                                         'object_ids': object_ids,
                                         'transformation_matrix': transformation_matrix_torch,
                                         'bpp_stack': cav_content['bpp_stack'],
-                                        'size_stack': cav_content['size_stack']})
+                                        'size_stack': cav_content['size_stack'],
+                                        'path': cav_content['path']})
 
             if self.visualize:
                 origin_lidar = \
@@ -516,17 +408,16 @@ class EarlyFusionDataset(basedataset.BaseDataset):
         """
         pred_box_tensor, pred_score = \
             self.post_processor.post_process(data_dict, output_dict)
-        gt_box_tensor = self.post_processor.generate_gt_bbx(data_dict)
+        gt_box_tensor, obj_id = self.post_processor.generate_gt_bbx(data_dict)
 
-        return pred_box_tensor, pred_score, gt_box_tensor
+        return pred_box_tensor, pred_score, gt_box_tensor, obj_id
 
-    def generate_label_complement_weight(self, selected_cav_base, ego_cav_base):
-        score = {}
-        if 'path' in ego_cav_base:
-            score_path = ego_cav_base['path'] + '.score'
-            if os.path.exists(score_path):
-                with open(score_path, 'rb') as f:
-                    score = pickle.load(f)  # {car_id: {score: ..., iou: ...}}
+    def generate_label_complement(self, selected_cav_base, ego_cav_base):
+        if 'path' in selected_cav_base:
+            cache_path = selected_cav_base['path'] + '_' + self.label_mode + '.npy'
+            if os.path.exists(cache_path):
+                label_complement = np.load(cache_path)
+                return label_complement  # (N, 1)
 
         tmp_object_dict = {}
         tmp_object_dict.update(selected_cav_base['params']['vehicles'])
@@ -536,14 +427,61 @@ class EarlyFusionDataset(basedataset.BaseDataset):
         transmit_vehicle_base = {k: tmp_object_dict[k] for k in transmit_vehicle}
         other_vehicle_base = {k: tmp_object_dict[k] for k in tmp_object_dict.keys() - transmit_vehicle}
 
-        mask_for_transmit_vehicle = np.array([False] * selected_cav_base['lidar_np'].shape[0])
-        mask_for_other_vehicle = np.array([False] * selected_cav_base['lidar_np'].shape[0])
+        def get_mask_for_vehicle(vehicle_base, cav_base):
+            masks = [np.array([False]*cav_base['lidar_np'].shape[0])]
+            for veh_id, veh_content in vehicle_base.items():
+                location = veh_content['location']
+                rotation = veh_content['angle']
+                center = veh_content['center']
+                extent = veh_content['extent']
+                object_pose = [location[0] + center[0],
+                               location[1] + center[1],
+                               location[2] + center[2],
+                               rotation[0], rotation[1], rotation[2]]
+                lidar2object = x1_to_x2(cav_base['params']['lidar_pose'], object_pose)
+                lidar_np = cav_base['lidar_np'][:, :3]
+                lidar_np = box_utils.project_points_by_matrix_torch(lidar_np, lidar2object)  # (N, 3)
+                range_veh = np.array(extent)
+                mask = (lidar_np[:, 0] > -range_veh[0]) & (lidar_np[:, 0] < range_veh[0]) & \
+                       (lidar_np[:, 1] > -range_veh[1]) & (lidar_np[:, 1] < range_veh[1]) & \
+                       (lidar_np[:, 2] > -range_veh[2]) & (lidar_np[:, 2] < range_veh[2])
+                masks.append(mask)  # (N)
+            masks = np.logical_or.reduce(masks)  # (N)
+            return masks
 
-        def get_mask(veh_c, cav_base):
-            location = veh_c['location']
-            rotation = veh_c['angle']
-            center = veh_c['center']
-            extent = veh_c['extent']
+        mask_for_transmit_vehicle = get_mask_for_vehicle(transmit_vehicle_base, selected_cav_base)
+        mask_for_other_vehicle = get_mask_for_vehicle(other_vehicle_base, selected_cav_base)
+        if self.label_mode == 'foreground_all':
+            mask_for_transmit_vehicle = np.logical_or(mask_for_transmit_vehicle, mask_for_other_vehicle)
+            return mask_for_transmit_vehicle.astype(float)
+        elif self.label_mode == 'bin_MSE':
+            return mask_for_transmit_vehicle.astype(float)
+        else:
+            raise NotImplementedError
+        # TODO: label save
+        # TODO: other label mode
+
+    def generate_label_complement_weight(self, selected_cav_base, ego_cav_base):
+        # 生成label的同时生成权重，agent中每个物体的权重，根据其在ego视野中的点的个数而定
+        if 'path' in selected_cav_base:
+            cache_path = selected_cav_base['path'] + '_' + self.label_mode + '.npy'
+            if os.path.exists(cache_path):
+                label_complement = np.load(cache_path)
+                return label_complement  # (N, 1)
+
+        tmp_object_dict = {}
+        tmp_object_dict.update(selected_cav_base['params']['vehicles'])
+        transmit_vehicle = set(selected_cav_base['params']['vehicles'].keys())
+        if ego_cav_base is not None:
+            transmit_vehicle = transmit_vehicle - set(ego_cav_base['params']['vehicles'].keys())
+        transmit_vehicle_base = {k: tmp_object_dict[k] for k in transmit_vehicle}
+        other_vehicle_base = {k: tmp_object_dict[k] for k in tmp_object_dict.keys() - transmit_vehicle}
+
+        def get_mask(veh_content, cav_base):
+            location = veh_content['location']
+            rotation = veh_content['angle']
+            center = veh_content['center']
+            extent = veh_content['extent']
             object_pose = [location[0] + center[0],
                            location[1] + center[1],
                            location[2] + center[2],
@@ -552,53 +490,49 @@ class EarlyFusionDataset(basedataset.BaseDataset):
             lidar_np = cav_base['lidar_np'][:, :3]
             lidar_np = box_utils.project_points_by_matrix_torch(lidar_np, lidar2object)  # (N, 3)
             range_veh = np.array(extent)
-            mask22 = (lidar_np[:, 0] > -range_veh[0]) & (lidar_np[:, 0] < range_veh[0]) & \
-                     (lidar_np[:, 1] > -range_veh[1]) & (lidar_np[:, 1] < range_veh[1]) & \
-                     (lidar_np[:, 2] > -range_veh[2]) & (lidar_np[:, 2] < range_veh[2])
-            return mask22
+            mask = (lidar_np[:, 0] > -range_veh[0]) & (lidar_np[:, 0] < range_veh[0]) & \
+                   (lidar_np[:, 1] > -range_veh[1]) & (lidar_np[:, 1] < range_veh[1]) & \
+                   (lidar_np[:, 2] > -range_veh[2]) & (lidar_np[:, 2] < range_veh[2])
+            return mask
 
-        for veh_id, veh_content in transmit_vehicle_base.items():
-            mask = get_mask(veh_content, selected_cav_base)
-            mask_for_transmit_vehicle = np.logical_or(mask_for_transmit_vehicle, mask)
-        weight_for_transmit_vehicle = np.zeros_like(mask_for_transmit_vehicle, dtype=np.float32)
-        weight_for_transmit_vehicle[mask_for_transmit_vehicle] = 1.0  # 视野中没有的拥有最高权重
+        def get_mask_for_vehicle(vehicle_base, cav_base):
+            masks = [np.array([False]*cav_base['lidar_np'].shape[0])]
+            for veh_id, veh_content in vehicle_base.items():
+                mask = get_mask(veh_content, selected_cav_base)
+                masks.append(mask)  # (N)
+            masks = np.logical_or.reduce(masks)  # (N)
+            return masks
 
-        weight_for_other_vehicle = np.zeros_like(mask_for_transmit_vehicle, dtype=np.float32)
-        for veh_id, veh_content in other_vehicle_base.items():
-            mask = get_mask(veh_content, selected_cav_base)
-            if veh_id in score:
-                weight_for_other_vehicle[mask] = 1 - min(score[veh_id]['iou'], score[veh_id]['score'])
-                if score[veh_id]['iou'] > 0.7:
-                    mask_for_other_vehicle[mask] = False
-                else:
-                    mask_for_other_vehicle[mask] = True
-                # TODO: 1 - min(iou, score) or 1 - iou * score
-            else:
-                weight_for_other_vehicle[mask] = 1.0
-                mask_for_other_vehicle = np.logical_or(mask_for_other_vehicle, mask)
+        # def get_mask_for_vehicle_with_weight(vehicle_base, cav_base, ego_base):
+        #     masks = [np.array([False] * cav_base['lidar_np'].shape[0])]
+        #     ego_veh_base = ego_base['params']['vehicles']
+        #     for veh_id, veh_content in vehicle_base.items():
+        #         mask = get_mask(veh_content, selected_cav_base)
+        #         mask_ego = get_mask(ego_veh_base[veh_id], ego_base)
+        #         masks.append(mask)  # (N)
+        #     masks = np.logical_or.reduce(masks)  # (N)
+        #     return masks
+        # TODO: NotImplementedError
 
-        if self.label_mode == 'foreground_all':  # all vehicles
-            mask_for_transmit_vehicle = np.logical_or(mask_for_transmit_vehicle,
-                                                      weight_for_other_vehicle > 0.0)
+        mask_for_transmit_vehicle = get_mask_for_vehicle(transmit_vehicle_base, selected_cav_base)
+        # weight_for_transmit_vehicle = np.full_like(mask_for_transmit_vehicle, 0.0)
+        # weight_for_transmit_vehicle[mask_for_transmit_vehicle] = 1.0    #视野中没有出现的权重为1
+
+        mask_for_other_vehicle = get_mask_for_vehicle(other_vehicle_base, selected_cav_base)
+        if self.label_mode == 'foreground_all':
+            mask_for_transmit_vehicle = np.logical_or(mask_for_transmit_vehicle, mask_for_other_vehicle)
             return mask_for_transmit_vehicle.astype(float)
-        elif self.label_mode == 'bin_MSE':  # 一维权重
-            final_weight = weight_for_transmit_vehicle + weight_for_other_vehicle
-            final_weight = np.clip(final_weight, 0.0, 1.0)
-            return final_weight
-        elif self.label_mode == 'bin_CE':  # 二分类，根据阈值
-            # final_weight = weight_for_transmit_vehicle + weight_for_other_vehicle
-            final_mask = np.logical_or(mask_for_transmit_vehicle, mask_for_other_vehicle)
-            final_mask = final_mask.astype(float)
-            return final_mask
+        elif self.label_mode == 'bin_MSE':
+            return mask_for_transmit_vehicle.astype(float)
         else:
             raise NotImplementedError
         # TODO: label save
         # TODO: other label mode
 
-
 if __name__ == '__main__':
     hypes_yaml = '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_early_fusion.yaml'
     hypes = yaml_utils.load_yaml(hypes_yaml)
-    dataset = EarlyFusionDataset(params=hypes, visualize=True)
-    dataset.debug(0)
+    dataset = EarlyFusion4LabelGenerate(params=hypes, visualize=True)
+    dataset.__getitem__(0)
     print('----------')
+

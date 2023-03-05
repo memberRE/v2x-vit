@@ -1,3 +1,4 @@
+import copy
 import os
 
 import numpy as np
@@ -5,6 +6,8 @@ import torch
 
 from v2xvit.utils import common_utils
 from v2xvit.hypes_yaml import yaml_utils
+from collections import OrderedDict
+import pickle
 
 
 def voc_ap(rec, prec):
@@ -85,6 +88,35 @@ def caluclate_tp_fp(det_boxes, det_score, gt_boxes, result_stat, iou_thresh):
     result_stat[iou_thresh]['fp'] += fp
     result_stat[iou_thresh]['tp'] += tp
     result_stat[iou_thresh]['gt'] += gt
+
+def caluclate_tp_fp_4_save(det_boxes, det_score, gt_boxes, obj_id, save_path, iou_thresh=0.3):
+    gt = gt_boxes.shape[0]
+    if det_boxes is not None:
+        # convert bounding boxes to numpy array
+        det_boxes = common_utils.torch_tensor_to_numpy(det_boxes)
+        det_score = common_utils.torch_tensor_to_numpy(det_score)
+        gt_boxes = common_utils.torch_tensor_to_numpy(gt_boxes)
+        obj_ids = copy.deepcopy(obj_id)
+        ans = OrderedDict()
+
+        # sort the prediction bounding box by score
+        score_order_descend = np.argsort(-det_score)    # 降序
+        det_polygon_list = list(common_utils.convert_format(det_boxes))
+        gt_polygon_list = list(common_utils.convert_format(gt_boxes))
+
+        # match prediction and gt bounding box
+        for i in range(score_order_descend.shape[0]):
+            det_polygon = det_polygon_list[score_order_descend[i]]
+            ious = common_utils.compute_iou(det_polygon, gt_polygon_list)
+            if len(gt_polygon_list) == 0 or np.max(ious) < iou_thresh:
+                continue
+            gt_index = np.argmax(ious)
+            ans[obj_ids[gt_index]] = {'score': det_score[score_order_descend[i]], 'iou': ious[gt_index]}
+            gt_polygon_list.pop(gt_index)
+            obj_ids.pop(gt_index)
+        with open(save_path+'.score', 'wb') as f:
+            pickle.dump(ans, f)
+        print('save score to {}'.format(save_path+'.score'))
 
 
 def calculate_ap(result_stat, iou):

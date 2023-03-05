@@ -263,6 +263,7 @@ class BaseDataset(Dataset):
                                                        cur_ego_pose_flag)
             data[cav_id]['lidar_np'] = \
                 pcd_utils.pcd_to_np(cav_content[timestamp_key_delay]['lidar'])
+            data[cav_id]['path'] = os.path.splitext(cav_content[timestamp_key_delay]['lidar'])[0]  # path to save results
         return data
 
     @staticmethod

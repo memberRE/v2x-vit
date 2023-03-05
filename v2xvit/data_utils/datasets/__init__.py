@@ -2,12 +2,14 @@ from v2xvit.data_utils.datasets.late_fusion_dataset import LateFusionDataset
 from v2xvit.data_utils.datasets.early_fusion_dataset import EarlyFusionDataset
 from v2xvit.data_utils.datasets.intermediate_fusion_dataset import IntermediateFusionDataset
 from v2xvit.data_utils.datasets.motion_dataset import MotionDataset
+from v2xvit.data_utils.datasets.early_fusion_4_label_generate import EarlyFusion4LabelGenerate
 
 __all__ = {
     'LateFusionDataset': LateFusionDataset,
     'EarlyFusionDataset': EarlyFusionDataset,
     'IntermediateFusionDataset': IntermediateFusionDataset,
-    'motionDataset': MotionDataset
+    'motionDataset': MotionDataset,
+    'EarlyFusionDataset4LabelGen': EarlyFusion4LabelGenerate,
 }
 
 # the final range for evaluation
