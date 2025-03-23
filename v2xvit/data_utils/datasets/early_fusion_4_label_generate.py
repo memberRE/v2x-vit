@@ -408,7 +408,7 @@ class EarlyFusion4LabelGenerate(basedataset.BaseDataset):
         """
         pred_box_tensor, pred_score = \
             self.post_processor.post_process(data_dict, output_dict)
-        gt_box_tensor, obj_id = self.post_processor.generate_gt_bbx(data_dict)
+        gt_box_tensor, obj_id = self.post_processor.generate_gt_bbx_for_label_gen(data_dict)
 
         return pred_box_tensor, pred_score, gt_box_tensor, obj_id
 

@@ -97,6 +97,67 @@ class BasePostprocessor(object):
 
         return gt_box3d_tensor
 
+    def generate_gt_bbx_for_label_gen(self, data_dict):
+        """
+        The base postprocessor will generate 3d groundtruth bounding box.
+
+        Parameters
+        ----------
+        data_dict : dict
+            The dictionary containing the origin input data of model.
+
+        Returns
+        -------
+        gt_box3d_tensor : torch.Tensor
+            The groundtruth bounding box tensor, shape (N, 8, 3).
+        """
+        gt_box3d_list = []
+        # used to avoid repetitive bounding box
+        object_id_list = []
+
+        for cav_id, cav_content in data_dict.items():
+            # used to project gt bounding box to ego space.
+            # the transformation matrix for gt should always be based on
+            # current timestamp (object transformation matrix is for
+            # late fusion only since other fusion method already did
+            #  the transformation in the preprocess)
+            transformation_matrix = cav_content['transformation_matrix'] \
+                if 'gt_transformation_matrix' not in cav_content \
+                else cav_content['gt_transformation_matrix']
+
+            object_bbx_center = cav_content['object_bbx_center']
+            object_bbx_mask = cav_content['object_bbx_mask']
+            object_ids = cav_content['object_ids']
+            object_bbx_center = object_bbx_center[object_bbx_mask == 1]
+
+            # convert center to corner
+            object_bbx_corner = \
+                box_utils.boxes_to_corners_3d(object_bbx_center,
+                                              self.params['order'])
+            projected_object_bbx_corner = \
+                box_utils.project_box3d(object_bbx_corner.float(),
+                                        transformation_matrix)
+            gt_box3d_list.append(projected_object_bbx_corner)
+
+            # append the corresponding ids
+            object_id_list += object_ids
+
+        # gt bbx 3d
+        gt_box3d_list = torch.vstack(gt_box3d_list)
+        # some of the bbx may be repetitive, use the id list to filter
+        gt_box3d_selected_indices = \
+            [object_id_list.index(x) for x in set(object_id_list)]
+        gt_box3d_tensor = gt_box3d_list[gt_box3d_selected_indices]
+        object_id_list = [object_id_list[x] for x in gt_box3d_selected_indices]
+
+        # filter the gt_box to make sure all bbx are in the range
+        mask = \
+            box_utils.get_mask_for_boxes_within_range_torch(gt_box3d_tensor)
+        gt_box3d_tensor = gt_box3d_tensor[mask, :, :]
+        object_id_list = [object_id_list[x] for x in range(len(mask)) if mask[x]]
+
+        return gt_box3d_tensor, object_id_list
+
     def generate_object_center(self,
                                cav_contents,
                                reference_lidar_pose):

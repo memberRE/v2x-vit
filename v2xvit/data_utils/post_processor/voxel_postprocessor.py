@@ -129,12 +129,13 @@ class VoxelPostprocessor(BasePostprocessor):
             np.ascontiguousarray(anchors_standup_2d).astype(np.float32),
             np.ascontiguousarray(gt_standup_2d).astype(np.float32),
         )
-
+        # iou: (anchor, gt)
+        # iouT: (gt, anchor)
         # the anchor boxes has the largest iou across
         # shape: (n)
-        id_highest = np.argmax(iou.T, axis=1)
+        id_highest = np.argmax(iou.T, axis=1)   # (gt)->(anchor)
         # [0, 1, 2, ..., n-1]
-        id_highest_gt = np.arange(iou.T.shape[0])
+        id_highest_gt = np.arange(iou.T.shape[0]) # (gt)
         # make sure all highest iou is larger than 0
         mask = iou.T[id_highest_gt, id_highest] > 0
         id_highest, id_highest_gt = id_highest[mask], id_highest_gt[mask]
@@ -228,7 +229,7 @@ class VoxelPostprocessor(BasePostprocessor):
                 'pos_equal_one': pos_equal_one,
                 'neg_equal_one': neg_equal_one}
 
-    def post_process(self, data_dict, output_dict):
+    def post_process(self, data_dict, output_dict, use_size=False):
         """
         Process the outputs of the model to 2D/3D bounding box.
         Step1: convert each cav's output to bounding box format
@@ -253,6 +254,7 @@ class VoxelPostprocessor(BasePostprocessor):
         # the final bounding box list
         pred_box3d_list = []
         pred_box2d_list = []
+        sizes = []
 
         for cav_id, cav_content in data_dict.items():
             assert cav_id in output_dict
@@ -283,6 +285,7 @@ class VoxelPostprocessor(BasePostprocessor):
             boxes3d = torch.masked_select(batch_box3d[0],
                                           mask_reg[0]).view(-1, 7)
             scores = torch.masked_select(prob[0], mask[0])
+            sizes.append(scores.shape[0]*8*16)
 
             # convert output to bounding box
             if len(boxes3d) != 0:
@@ -339,6 +342,8 @@ class VoxelPostprocessor(BasePostprocessor):
 
         assert scores.shape[0] == pred_box3d_tensor.shape[0]
 
+        if use_size:
+            return pred_box3d_tensor, scores, sizes
         return pred_box3d_tensor, scores
 
     @staticmethod

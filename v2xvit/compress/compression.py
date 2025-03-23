@@ -69,8 +69,7 @@ def divide_cube(xyzs, attribute, map_size=100, cube_size=12):
 
 
 class CompressTools:
-    def __init__(self, cfg, range, model_path=None, dataset=None, train=False, use_patch=False, mapsize=100,
-                 cube_size=12):
+    def __init__(self, cfg, range, model_path=None, dataset=None, train=False, use_patch=False, mapsize=100):
         self.cfg = cfg
         self.dataset = dataset
         self.train = train
@@ -81,8 +80,8 @@ class CompressTools:
         self.compress_size = AverageMeter()  # bits
         self.use_patch = use_patch
         self.mapsize = mapsize
-        self.cube_size = cube_size
-        self.dim_cube_num = np.ceil(mapsize / cube_size).astype(int)
+        self.cube_size = cfg.train_cube_size
+        self.dim_cube_num = np.ceil(mapsize / self.cube_size).astype(int)
 
     def load_model(self, args, model_path):
         # load model

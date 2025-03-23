@@ -39,9 +39,9 @@ class RelTemporalEncoding(nn.Module):
     Implement the Temporal Encoding (Sinusoid) function.
     """
 
-    def __init__(self, n_hid, RTE_ratio, max_len=100, dropout=0.2):
+    def __init__(self, n_hid, RTE_ratio, max_len=100, dropout=0.2): # n_hid=256 = C
         super(RelTemporalEncoding, self).__init__()
-        position = torch.arange(0., max_len).unsqueeze(1)
+        position = torch.arange(0., max_len).unsqueeze(1)   # (100, 1) : [[0],[1],...[99]]
         div_term = torch.exp(torch.arange(0, n_hid, 2) *
                              -(math.log(10000.0) / n_hid))
         emb = nn.Embedding(max_len, n_hid)
