@@ -36,7 +36,8 @@ def voc_ap(rec, prec):
     return ap, mrec, mpre
 
 
-def caluclate_tp_fp(det_boxes, det_score, gt_boxes, result_stat, iou_thresh):
+def caluclate_tp_fp(det_boxes, det_score, gt_boxes, result_stat, iou_thresh,
+                    left_range=-float('inf'), right_range=float('inf')):
     """
     Calculate the true positive and false positive numbers of the current
     frames.
@@ -53,6 +54,10 @@ def caluclate_tp_fp(det_boxes, det_score, gt_boxes, result_stat, iou_thresh):
         A dictionary contains fp, tp and gt number.
     iou_thresh : float
         The iou thresh.
+    right_range : float
+        The evaluarion range right bound
+    left_range : float
+        The evaluation range left bound
     """
     # fp, tp and gt in the current frame
     fp = []
@@ -64,10 +69,32 @@ def caluclate_tp_fp(det_boxes, det_score, gt_boxes, result_stat, iou_thresh):
         det_score = common_utils.torch_tensor_to_numpy(det_score)
         gt_boxes = common_utils.torch_tensor_to_numpy(gt_boxes)
 
+        det_polygon_list_origin = list(common_utils.convert_format(det_boxes))
+        gt_polygon_list_origin = list(common_utils.convert_format(gt_boxes))
+        det_polygon_list = []
+        gt_polygon_list = []
+        det_score_new = []
+        # remove the bbx out of range
+        for i in range(len(det_polygon_list_origin)):
+            det_polygon = det_polygon_list_origin[i]
+            distance = np.sqrt(det_polygon.centroid.x**2 +
+                               det_polygon.centroid.y**2)
+            if left_range < distance < right_range:
+                det_polygon_list.append(det_polygon)
+                det_score_new.append(det_score[i])
+
+        for i in range(len(gt_polygon_list_origin)):
+            gt_polygon = gt_polygon_list_origin[i]
+            distance = np.sqrt(gt_polygon.centroid.x**2 +
+                               gt_polygon.centroid.y**2)
+            if left_range < distance < right_range:
+                gt_polygon_list.append(gt_polygon)
+
+        gt = len(gt_polygon_list)
+        det_score_new = np.array(det_score_new)
         # sort the prediction bounding box by score
-        score_order_descend = np.argsort(-det_score)
-        det_polygon_list = list(common_utils.convert_format(det_boxes))
-        gt_polygon_list = list(common_utils.convert_format(gt_boxes))
+        score_order_descend = np.argsort(-det_score_new)
+        det_score = det_score[score_order_descend]
 
         # match prediction and gt bounding box
         for i in range(score_order_descend.shape[0]):
@@ -84,7 +111,9 @@ def caluclate_tp_fp(det_boxes, det_score, gt_boxes, result_stat, iou_thresh):
 
             gt_index = np.argmax(ious)
             gt_polygon_list.pop(gt_index)
-
+        result_stat[iou_thresh]['score'] += det_score.tolist()
+    else:
+        gt = gt_boxes.shape[0]
     result_stat[iou_thresh]['fp'] += fp
     result_stat[iou_thresh]['tp'] += tp
     result_stat[iou_thresh]['gt'] += gt
@@ -119,7 +148,7 @@ def caluclate_tp_fp_4_save(det_boxes, det_score, gt_boxes, obj_id, save_path, io
         print('save score to {}'.format(save_path+'.score'))
 
 
-def calculate_ap(result_stat, iou):
+def calculate_ap(result_stat, iou, resort=False):
     """
     Calculate the average precision and recall, and save them into a txt.
 
@@ -131,9 +160,17 @@ def calculate_ap(result_stat, iou):
     """
     iou_5 = result_stat[iou]
 
-    fp = iou_5['fp']
-    tp = iou_5['tp']
-    assert len(fp) == len(tp)
+    fp = np.array(iou_5['fp'])
+    tp = np.array(iou_5['tp'])
+    score = np.array(iou_5['score'])
+    assert len(fp) == len(tp) and len(tp) == len(score)
+    if resort:
+        sorted_index = np.argsort(-score)
+        fp = fp[sorted_index].tolist()
+        tp = tp[sorted_index].tolist()
+    else:
+        fp = fp.tolist()
+        tp = tp.tolist()
 
     gt_total = iou_5['gt']
 
@@ -160,12 +197,14 @@ def calculate_ap(result_stat, iou):
     return ap, mrec, mprec
 
 
-def eval_final_results(result_stat, save_path, bpps = None, compress_size = None):
+def eval_final_results(result_stat, save_path, bpps = None, compress_size = None, range="", resort=False):
     dump_dict = {}
-
-    ap_30, mrec_30, mpre_30 = calculate_ap(result_stat, 0.30)
-    ap_50, mrec_50, mpre_50 = calculate_ap(result_stat, 0.50)
-    ap_70, mrec_70, mpre_70 = calculate_ap(result_stat, 0.70)
+    file_name = 'eval.yaml' if range == "" else range + '_eval.yaml'
+    if resort:
+        file_name = 'resort_' + file_name
+    ap_30, mrec_30, mpre_30 = calculate_ap(result_stat, 0.30, resort=resort)
+    ap_50, mrec_50, mpre_50 = calculate_ap(result_stat, 0.50, resort=resort)
+    ap_70, mrec_70, mpre_70 = calculate_ap(result_stat, 0.70, resort=resort)
 
     dump_dict.update({'ap30': ap_30,
                       'ap_50': ap_50,
@@ -179,8 +218,10 @@ def eval_final_results(result_stat, save_path, bpps = None, compress_size = None
         dump_dict.update({'bpps': bpps})
     if compress_size is not None:
         dump_dict.update({'compress_size': compress_size})
-    yaml_utils.save_yaml(dump_dict, os.path.join(save_path, 'eval.yaml'))
+    yaml_utils.save_yaml(dump_dict, os.path.join(save_path, file_name))
 
-    print('\nThe Average Precision at IOU 0.3 is %.2f, '
-          '\nThe Average Precision at IOU 0.5 is %.2f, '
-          '\nThe Average Precision at IOU 0.7 is %.2f' % (ap_30, ap_50, ap_70))
+    print('The range is %s, '
+          'The Average Precision at IOU 0.3 is %.4f, '
+          'The Average Precision at IOU 0.5 is %.4f, '
+          'The Average Precision at IOU 0.7 is %.4f' % (range, ap_30, ap_50, ap_70))
+    return ap_30, ap_50, ap_70

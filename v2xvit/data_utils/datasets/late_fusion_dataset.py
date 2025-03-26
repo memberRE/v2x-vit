@@ -249,7 +249,7 @@ class LateFusionDataset(basedataset.BaseDataset):
 
         return output_dict
 
-    def post_process(self, data_dict, output_dict):
+    def post_process(self, data_dict, output_dict, show_size=False):
         """
         Process the outputs of the model to 2D/3D bounding box.
 
@@ -268,8 +268,11 @@ class LateFusionDataset(basedataset.BaseDataset):
         gt_box_tensor : torch.Tensor
             The tensor of gt bounding box.
         """
-        pred_box_tensor, pred_score = \
-            self.post_processor.post_process(data_dict, output_dict)
+        pred_box_tensor, pred_score, sizes = \
+            self.post_processor.post_process(data_dict, output_dict, show_size)
         gt_box_tensor = self.post_processor.generate_gt_bbx(data_dict)
+
+        if show_size:
+            return pred_box_tensor, pred_score, gt_box_tensor, sizes
 
         return pred_box_tensor, pred_score, gt_box_tensor

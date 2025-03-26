@@ -18,12 +18,82 @@ from v2xvit.utils import eval_utils
 
 DEBUG = True
 
+LF_dict = easydict.EasyDict(
+    {'hypes_yaml': '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_late_fusion.yaml',
+     # 'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/fintuned-dpcc-EF-perfect-bpp4',
+     'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/point_pillar_late_fusion_2023_03_05_23_55_23',
+     'fusion_method': 'late',
+     'save_npy': False,
+     'save_vis': False,
+     'show_vis': False,
+     'show_sequence': False,
+     'load_epoch': 11,
+     'stage': 'stage1',
+     'compress_yaml': None,
+     'compress_model': None
+     })
+
+
+EF_dict = easydict.EasyDict(
+    {
+     # 'hypes_yaml': '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_early_fusion.yaml',
+     'hypes_yaml': '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_early_fusion.yaml',
+     # 'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/fintuned-dpcc-EF-perfect-bpp4',
+     # 'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/early_fusion_no_aug',
+     'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/point_pillar_early_fusion_baseline',
+     'fusion_method': 'early',
+     'save_npy': False,
+     'save_vis': False,
+     'show_vis': False,
+     'show_sequence': False,
+     'load_epoch': 22,
+     'stage': 'stage1',
+     # 'compress_yaml': '/home/JJ_Group/cheny/D-PCC/configs/kitti.yaml',
+     # 'compress_model': '/home/JJ_Group/cheny/D-PCC/output/bpp18_no_bug/ckpt/ckpt-best.pth'
+     # 'compress_yaml': '/home/JJ_Group/cheny/D-PCC/configs/kitti_bpp2.yaml',
+     # 'compress_model': '/home/JJ_Group/cheny/D-PCC/output/bpp2/ckpt/ckpt-best.pth'
+     'compress_yaml': None,
+     'compress_model': None
+     })
+
+MF_dict = easydict.EasyDict(
+    {'hypes_yaml': '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/stage3_baseline_compress32_noNoise.yaml',
+     'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/baseline_compress32_noNoise',
+     'fusion_method': 'intermediate',
+     'save_npy': True,
+     'save_vis': False,
+     'show_vis': False,
+     'show_sequence': False,
+     'load_epoch': 66,
+     'compress_yaml': None,
+     'compress_model': None,
+     'stage': 'stage1'})
+
+MF_compress0_dict = easydict.EasyDict(
+    {'hypes_yaml': '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/stage3_baseline_compress0.yaml',
+     'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/baseline_compress0',
+     'fusion_method': 'intermediate',
+     'save_npy': True,
+     'save_vis': False,
+     'show_vis': False,
+     'show_sequence': False,
+     'load_epoch': 60,
+     'compress_yaml': None,
+     'compress_model': None,
+     'stage': 'stage1'})
+
+preset_dict = {
+    'LF': LF_dict,
+    'EF': EF_dict,
+    'MF': MF_dict,
+    'MF_compress0': MF_compress0_dict
+}
 
 def test_parser():
     parser = argparse.ArgumentParser(description="synthetic data generation")
-    parser.add_argument('--hypes_yaml', type=str, required=True,
+    parser.add_argument('--hypes_yaml', type=str, required=False, default=None,
                         help='hypes path')
-    parser.add_argument('--model_dir', type=str, required=True,
+    parser.add_argument('--model_dir', type=str, required=False, default=None,
                         help='Continued training path')
     parser.add_argument('--fusion_method', required=False, type=str,
                         default='intermediate',
@@ -47,53 +117,56 @@ def test_parser():
     opt = parser.parse_args()
     return opt
 
-
-num_workers = 4
-
-EF_dict = easydict.EasyDict(
-    {'hypes_yaml': '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/point_pillar_early_fusion.yaml',
-     # 'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/fintuned-dpcc-EF-perfect-bpp4',
-     'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/point_pillar_early_fusion_baseline',
-     'fusion_method': 'early',
-     'save_npy': False,
-     'save_vis': False,
-     'show_vis': False,
-     'show_sequence': False,
-     'load_epoch': 22,
-     'stage': 'stage1',
-     # 'compress_yaml': '/home/JJ_Group/cheny/D-PCC/configs/kitti.yaml',
-     # 'compress_model': '/home/JJ_Group/cheny/D-PCC/output/bpp18_no_bug/ckpt/ckpt-best.pth'
-     # 'compress_yaml': '/home/JJ_Group/cheny/D-PCC/configs/kitti_bpp3_xyz1e4_f1e3.yaml',
-     # 'compress_model': '/home/JJ_Group/cheny/D-PCC/output/2023-02-17T15:58:58.426180_kitti_bpp3_xyz1e4_f1e3/ckpt/ckpt-best.pth'
-     'compress_yaml': None,
-     'compress_model': None
-     })
-
-
 def debug_parser():
     parser = argparse.ArgumentParser(description="synthetic data generation")
-    parser.add_argument('--hypes_yaml', type=str, default=None,
-                        help='hypes path')
-    parser.add_argument('--model_dir', type=str, default=None,
-                        help='Continued training path')
+    # parser.add_argument('--hypes_yaml', type=str, default=None,
+    #                     help='hypes path')
+    # parser.add_argument('--model_dir', type=str, default=None,
+    #                     help='Continued training path')
+    parser.add_argument('--overlap', type=str, default=None, help='EF MF LF MF_compress0')
     parser.add_argument('--compress_yaml', type=str, default=None, help='compress yaml file')
     parser.add_argument('--compress_model', default=None, help='model path')
-    parser.add_argument('--load_epoch', required=False, type=int,
-                        default=None)
+    parser.add_argument('--new_eval', action='store_true',)
+    # parser.add_argument('--load_epoch', required=False, type=int,
+    #                     default=None)
+
+    # parser.add_argument('--sample_points', type=int, default=None)
+    # parser.add_argument('--sample_rates', type=float, default=None)
+    # parser.add_argument('--use_strange_sample_mode', action='store_true')
+    # parser.add_argument('--spare', action='store_true')
+    # parser.add_argument('--mask_first', action='store_true')
+    # parser.add_argument('--spare_mode', type=str, default=None)
+    # parser.add_argument('--label_mode', type=str, default=None)
+    # parser.add_argument('--use_label_mask', action='store_true')
+    # parser.add_argument('--compress_ego_car', action='store_true')
+    # srun python inference.py --sample_points 4096 --spare --mask_first --spare_mode FPS
+    # srun python inference.py --sample_rates 0.3 --spare --mask_first --spare_mode FPS --label_mode foreground_all --use_label_mask
+    # self.sample_points = 4096
+    # self.sample_rates = -1
+    # self.use_strange_sample_mode = False
+    # # if True, sample_points = sample_rate*num_points_foreground, only used in W_FPS with use_label_mask=False
+    # self.spare = True
+    # self.mask_first = True
+    # self.spare_mode = 'FPS'
+    # self.label_mode = 'bin_CE'
+    # self.use_label_mask = False
+    # self.compress_ego_car = False
     opt = parser.parse_args()
     return opt
 
-
-MF_dict = easydict.EasyDict(
-    {'hypes_yaml': '/home/JJ_Group/cheny/v2x-vit/v2xvit/hypes_yaml/stage3_baseline_compress0.yaml',
-     'model_dir': '/home/JJ_Group/cheny/v2x-vit/v2xvit/logs/point_pillar_v2xvit_2022_10_12_01_12_00',
-     'fusion_method': 'intermediate',
-     'save_npy': True,
-     'save_vis': False,
-     'show_vis': False,
-     'show_sequence': False,
-     'load_epoch': 16,
-     'stage': 'stage1'})
+def hyper_parser():
+    parser = argparse.ArgumentParser(description="synthetic data generation")
+    parser.add_argument('--sample_points', type=int, default=None)
+    parser.add_argument('--sample_rates', type=float, default=None)
+    parser.add_argument('--use_strange_sample_mode', action='store_true')
+    parser.add_argument('--spare', action='store_true')
+    parser.add_argument('--mask_first', action='store_true')
+    parser.add_argument('--spare_mode', type=str, default=None)
+    parser.add_argument('--label_mode', type=str, default=None)
+    parser.add_argument('--use_label_mask', action='store_true')
+    parser.add_argument('--compress_ego_car', action='store_true')
+    opt = parser.parse_args()
+    return opt
 
 
 def update_hypes(opt, expr):
@@ -105,21 +178,33 @@ def update_hypes(opt, expr):
 
 def main():
     print(os.path.abspath('.'))
+
+    num_workers = 8
+    use_test = True
+    extra_hype = None
+
     if DEBUG:
-        opt = EF_dict
         extr = debug_parser()
+        if extr.overlap:
+            opt = preset_dict[extr.overlap]
         opt = update_hypes(opt, extr)
+        # extra_hype = hyper_parser()
         print(opt)
     else:
         opt = test_parser()
-    assert opt.fusion_method in ['late', 'early', 'intermediate']
-    assert not (opt.show_vis and opt.show_sequence), \
-        'you can only visualize ' \
-        'the results in single ' \
-        'image mode or video mode'
-
     hypes = yaml_utils.load_yaml(opt.hypes_yaml, opt)
-    stage = opt.stage
+    print('-------------------------------------------')
+    print('load hypes from {}'.format(opt.hypes_yaml))
+    print('-------------------------------------------')
+    if extra_hype is not None:
+        hypes = update_hypes(hypes, extra_hype)
+        print(hypes)
+    print('-------------------------------------------')
+    if use_test:
+        hypes['validate_dir'] = '/home/JJ_Group/datasets/V2X/v2xset/test'
+        print('use test set')
+    else:
+        print('use val set')
 
     print('Dataset Building')
     opencood_dataset = build_dataset(hypes, visualize=True, train=False)
@@ -141,7 +226,7 @@ def main():
         compress_hypes = yaml_utils.load_yaml(opt.compress_yaml, opt)
         compress_hypes = easydict.EasyDict(compress_hypes)
         # compress_hypes.downsample_rate = [1 / 3, 1 / 3, 1 / 3]
-        compress_model = CompressTools(compress_hypes, hypes['preprocess']['cav_lidar_range'], opt.compress_model,
+        compress_model = CompressTools(compress_hypes, hypes['preprocess']['cav_lidar_range'], opt.compress_model,  # TODO: check
                                        use_patch=True)
         print('-------------compress model loaded-------------')
         opencood_dataset.set_compress_model(compress_model)
@@ -149,17 +234,10 @@ def main():
         compress_hypes = None
         compress_model = None
 
-    motion_model = None
-    if hypes['use_motion']:
-        motion_model = train_utils.create_model(hypes, stage='stage2')
     # we assume gpu is necessary
     if torch.cuda.is_available():
         model.cuda()
-        if motion_model is not None:
-            motion_model.cuda()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    if stage == 'stage3':
-        model.load_motion(motion_model)
     print('Loading Model from checkpoint')
     saved_path = opt.model_dir
     _, model = train_utils.load_saved_model(saved_path, model, load_epoch=opt.load_epoch)
@@ -167,9 +245,18 @@ def main():
     model.eval()
 
     # Create the dictionary for evaluation
-    result_stat = {0.3: {'tp': [], 'fp': [], 'gt': 0},
-                   0.5: {'tp': [], 'fp': [], 'gt': 0},
-                   0.7: {'tp': [], 'fp': [], 'gt': 0}}
+    result_stat = {0.3: {'tp': [], 'fp': [], 'gt': 0, 'score': []},
+                   0.5: {'tp': [], 'fp': [], 'gt': 0, 'score': []},
+                   0.7: {'tp': [], 'fp': [], 'gt': 0, 'score': []}}
+    result_stat_short = {0.3: {'tp': [], 'fp': [], 'gt': 0, 'score': []},
+                   0.5: {'tp': [], 'fp': [], 'gt': 0, 'score': []},
+                   0.7: {'tp': [], 'fp': [], 'gt': 0, 'score': []}}
+    result_stat_middle = {0.3: {'tp': [], 'fp': [], 'gt': 0, 'score': []},
+                   0.5: {'tp': [], 'fp': [], 'gt': 0, 'score': []},
+                   0.7: {'tp': [], 'fp': [], 'gt': 0, 'score': []}}
+    result_stat_long = {0.3: {'tp': [], 'fp': [], 'gt': 0, 'score': []},
+                   0.5: {'tp': [], 'fp': [], 'gt': 0, 'score': []},
+                   0.7: {'tp': [], 'fp': [], 'gt': 0, 'score': []}}
 
     if opt.show_sequence:
         vis = o3d.visualization.Visualizer()
@@ -196,10 +283,11 @@ def main():
                 torch.cuda.synchronize()
             batch_data = train_utils.to_device(batch_data, device)
             if opt.fusion_method == 'late':
-                pred_box_tensor, pred_score, gt_box_tensor = \
+                pred_box_tensor, pred_score, gt_box_tensor, sizes = \
                     infrence_utils.inference_late_fusion(batch_data,
                                                          model,
                                                          opencood_dataset)
+                compress_size.update(sizes)
             elif opt.fusion_method == 'early':
                 bpps.update(batch_data['ego']['bpp_stack'])
                 compress_size.update(batch_data['ego']['size_stack'])
@@ -230,8 +318,61 @@ def main():
                                        gt_box_tensor,
                                        result_stat,
                                        0.7)
+
+            # short range
+            eval_utils.caluclate_tp_fp(pred_box_tensor,
+                                       pred_score,
+                                       gt_box_tensor,
+                                       result_stat_short,
+                                       0.5,
+                                       left_range=0,
+                                       right_range=30)
+            eval_utils.caluclate_tp_fp(pred_box_tensor,
+                                       pred_score,
+                                       gt_box_tensor,
+                                       result_stat_short,
+                                       0.7,
+                                       left_range=0,
+                                       right_range=30)
+
+            # middle range
+            eval_utils.caluclate_tp_fp(pred_box_tensor,
+                                       pred_score,
+                                       gt_box_tensor,
+                                       result_stat_middle,
+                                       0.5,
+                                       left_range=30,
+                                       right_range=50)
+            eval_utils.caluclate_tp_fp(pred_box_tensor,
+                                       pred_score,
+                                       gt_box_tensor,
+                                       result_stat_middle,
+                                       0.7,
+                                       left_range=30,
+                                       right_range=50)
+
+            # right range
+            eval_utils.caluclate_tp_fp(pred_box_tensor,
+                                       pred_score,
+                                       gt_box_tensor,
+                                       result_stat_long,
+                                       0.5,
+                                       left_range=50,
+                                       right_range=100)
+            eval_utils.caluclate_tp_fp(pred_box_tensor,
+                                       pred_score,
+                                       gt_box_tensor,
+                                       result_stat_long,
+                                       0.7,
+                                       left_range=50,
+                                       right_range=100)
+
             if opt.save_npy:
-                npy_save_path = os.path.join(opt.model_dir, 'npy')
+                if opt.compress_model:
+                    dir_name = opt.compress_model.split('/')[-3]
+                else:
+                    dir_name = 'npy'
+                npy_save_path = os.path.join(opt.model_dir, dir_name)
                 if not os.path.exists(npy_save_path):
                     os.makedirs(npy_save_path)
                 infrence_utils.save_prediction_gt(pred_box_tensor,
@@ -289,11 +430,27 @@ def main():
                 vis.update_renderer()
                 time.sleep(0.001)
 
-    eval_utils.eval_final_results(result_stat,
+    ap_30, ap_50, ap_70 = eval_utils.eval_final_results(result_stat,
                                   opt.model_dir,
                                   bpps=bpps.get_avg(),
-                                  compress_size=compress_size.get_avg())
+                                  compress_size=compress_size.get_avg(),
+                                  resort=opt.new_eval)
+    eval_utils.eval_final_results(result_stat_short,
+                                  opt.model_dir,
+                                  range="short", resort=opt.new_eval)
+    eval_utils.eval_final_results(result_stat_middle,
+                                  opt.model_dir,
+                                  range="middle", resort=opt.new_eval)
+    eval_utils.eval_final_results(result_stat_long,
+                                  opt.model_dir,
+                                  range="long", resort=opt.new_eval)
     repr_bpp = 'bpp: {}, compress_size: {}'.format(bpps.get_avg(), compress_size.get_avg())
+    res_name = 'result_' + time.strftime('%Y%m%d%H%M%S', time.localtime(time.time())) + '.txt'
+    with open(os.path.join(saved_path, res_name), 'a+') as f:
+        msg = 'Epoch: {} | AP @0.3: {:.04f} | AP @0.5: {:.04f} | AP @0.7: {:.04f} | comm_rate: {:.06f} | comm_bits: {:.04f} | comm_bits_ori: {:.04f}\n'.format(
+            -1, ap_30, ap_50, ap_70, 0, 0, -1)
+        f.write(msg)
+        print(msg)
     print(repr_bpp)
     if opt.show_sequence:
         vis.destroy_window()

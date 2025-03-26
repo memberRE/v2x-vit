@@ -29,11 +29,11 @@ def inference_late_fusion(batch_data, model, dataset):
     for cav_id, cav_content in batch_data.items():
         output_dict[cav_id] = model(cav_content)
 
-    pred_box_tensor, pred_score, gt_box_tensor = \
+    pred_box_tensor, pred_score, gt_box_tensor, sizes = \
         dataset.post_process(batch_data,
-                             output_dict)
+                             output_dict, True)
 
-    return pred_box_tensor, pred_score, gt_box_tensor
+    return pred_box_tensor, pred_score, gt_box_tensor, sizes
 
 
 def inference_early_fusion(batch_data, model, dataset):
@@ -64,33 +64,33 @@ def inference_early_fusion(batch_data, model, dataset):
 
     return pred_box_tensor, pred_score, gt_box_tensor
 
-# def inference_early_fusion_4_label_gen(batch_data, model, dataset):
-#     """
-#     Model inference for early fusion.
-#
-#     Parameters
-#     ----------
-#     batch_data : dict
-#     model : opencood.object
-#     dataset : opencood.EarlyFusionDataset
-#
-#     Returns
-#     -------
-#     pred_box_tensor : torch.Tensor
-#         The tensor of prediction bounding box after NMS.
-#     gt_box_tensor : torch.Tensor
-#         The tensor of gt bounding box.
-#     """
-#     output_dict = OrderedDict()
-#     cav_content = batch_data['ego']
-#
-#     output_dict['ego'] = model(cav_content)
-#
-#     pred_box_tensor, pred_score, gt_box_tensor, obj_id = \
-#         dataset.post_process(batch_data,
-#                              output_dict)
-#
-#     return pred_box_tensor, pred_score, gt_box_tensor, obj_id
+def inference_early_fusion_4_label_gen(batch_data, model, dataset):
+    """
+    Model inference for early fusion.
+
+    Parameters
+    ----------
+    batch_data : dict
+    model : opencood.object
+    dataset : opencood.EarlyFusionDataset
+
+    Returns
+    -------
+    pred_box_tensor : torch.Tensor
+        The tensor of prediction bounding box after NMS.
+    gt_box_tensor : torch.Tensor
+        The tensor of gt bounding box.
+    """
+    output_dict = OrderedDict()
+    cav_content = batch_data['ego']
+
+    output_dict['ego'] = model(cav_content)
+
+    pred_box_tensor, pred_score, gt_box_tensor, obj_id = \
+        dataset.post_process(batch_data,
+                             output_dict)
+
+    return pred_box_tensor, pred_score, gt_box_tensor, obj_id
 
 def inference_intermediate_fusion(batch_data, model, dataset):
     """
